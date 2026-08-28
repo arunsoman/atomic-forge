@@ -19,6 +19,13 @@ around three things most coding-agent libraries treat as an afterthought:
   static check that rejects a "passing" patch that silently breaks a caller
   elsewhere in the codebase.
 
+See [`benchmarks/`](benchmarks/) for real numbers behind these three
+claims (real merged GitHub bug fixes, run live against a real LLM
+endpoint — resolution, repair rounds, tokens, timing) and
+[`benchmarks/demo.md`](benchmarks/demo.md) for a full walkthrough of one
+real run, round-by-round, including the round that made things worse
+before the next one found the actual fix.
+
 ## Why this exists
 
 The generate → compile → test → repair loop itself isn't novel — aider,
@@ -58,7 +65,14 @@ project it was extracted from:
   graph, cross-repo analysis). `tools.py` ships one real, working
   `LocalToolBackend` (an in-memory symbol index — exact for Python via
   `ast`, regex-heuristic for JS/TS/Java) behind a `ToolBackend` protocol;
-  bring your own richer backend by implementing the same protocol.
+  bring your own richer backend by implementing the same protocol. A
+  worked second implementation —
+  [`examples/ripgrep_tool_backend.py`](examples/ripgrep_tool_backend.py),
+  a live-`rg` backend with no index/build step, useful on repos where
+  building `LocalToolBackend`'s index up front is itself the bottleneck —
+  is included as a reference, not a bundled dependency; its docstring
+  states the trade-off (textual call-site heuristics, not a resolved call
+  graph) rather than glossing over it.
 - No story-batched multi-file-in-one-completion generation mode (a real
   optimization in the project this was extracted from, cut here to keep
   the surface area reviewable — `generate_batch_agentic`'s per-task /
@@ -98,6 +112,15 @@ batch = AtomicTaskBatch(tasks=[task])
 
 Or write it as JSON (`examples/tasks.json` has a worked example) and use
 the CLI.
+
+**Don't want to hand-author the JSON?** `atomic-forge decompose --spec
+spec.md --out tasks.draft.json` asks the model to draft it for you from a
+loose natural-language spec/issue — including a proposed `test_triad`.
+This is scaffolding, not a shortcut around the contract: the exact same
+`AtomicTask` validation runs on the draft, anything that fails is written
+to `tasks.draft.json.rejected.json` with the real reason instead of being
+silently dropped, and the draft is meant to be reviewed/edited by a human
+before it's ever passed to `run`. See [decompose.py](src/atomic_forge/decompose.py).
 
 ### 2. Point forge at a real LLM endpoint
 
@@ -193,6 +216,7 @@ diff = diff_file_hashes(project_dir, record.file_hashes)
 | Module | What it does |
 |---|---|
 | `models.py` | `AtomicTask` / `AtomicTaskBatch` — the task contract |
+| `decompose.py` | Optional LLM-assisted draft of `AtomicTask` JSON from a loose spec — same contract enforced, human review still required |
 | `planner.py` | Dependency-ordered execution planning (Kahn topological sort) |
 | `agent.py` | The agentic session loop (TOOL / RUN / PATCH / SUBMIT grammar, or real function-calling) |
 | `llm.py` | `ChatLLM` protocol + `OpenAICompatLLM` + provider resolution |
@@ -207,6 +231,14 @@ diff = diff_file_hashes(project_dir, record.file_hashes)
 | `checkpoint.py` / `checkpoint_store.py` | Crash-safe, resumable run state (SQLite) |
 | `reporter.py` | Write-back protocol for task status/artifacts (bring your own backend) |
 | `trajectory.py` | Append-only JSONL audit trail of every action taken |
+
+## GitHub Action
+
+This repo is also a GitHub Action (`action.yml` + `Dockerfile` at the
+root) — a thin containerized wrapper around the CLI above, the one
+integration surface this project ships. See
+[`docs/github-action.md`](docs/github-action.md) for inputs/outputs and a
+worked workflow.
 
 ## License
 

@@ -1,0 +1,14 @@
+{
+  "id": "more_itertools_interleave_evenly_empty",
+  "source": {
+    "repo": "more-itertools/more-itertools",
+    "license": "MIT",
+    "pr_url": "https://github.com/more-itertools/more-itertools/pull/1193",
+    "pr_title": "Handle empty interleave_evenly input",
+    "base_commit": "5d946b3590bfe92f1465c1b9b9830dd434745c84",
+    "merge_commit": "b363d6b82c7082db647bd350560fca5e1d724a16"
+  },
+  "description": "A real, small merged bug fix: interleave_evenly([]) raised IndexError instead of returning an empty result. seed/mod.py is the verbatim pre-fix interleave_evenly(), extracted to a standalone module. seed/test_mod.py is the real InterleaveEvenlyTests test class from that commit's tests/test_more.py (imports adapted, some smoke/randomized tests dropped for determinism), including the real regression test the PR added — the oracle this case is judged against.",
+  "mode": "repair_only",
+  "note": "generate/qa phases are skipped for this case — seed/ is copied in as-is and only `atomic-forge repair` runs. This case's ground-truth error (IndexError from an unguarded index into an empty list two statements after the actual bad condition) is a slightly harder localization target than the chunked_negative_n case's direct ValueError-vs-ValueError mismatch."
+}

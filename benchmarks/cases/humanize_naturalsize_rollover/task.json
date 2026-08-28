@@ -1,0 +1,25 @@
+{
+  "tasks": [
+    {
+      "name": "fix naturalsize rounding rollover at unit boundaries",
+      "task_type": "dev",
+      "action": "modify",
+      "file_path": "mod.py",
+      "layer": "Backend",
+      "description": "naturalsize() picks its suffix (kB/MB/GB/...) from the unrounded byte count via exp = int(min(log(abs_bytes, base), len(suffix))), then rounds the mantissa afterward with the format string. When rounding pushes the mantissa up to base (e.g. 999999 bytes is 999.999 kB, which '%.1f' rounds to 1000.0), the suffix chosen earlier is now stale: naturalsize(999999) returns '1000.0 kB' instead of the correct '1.0 MB'. This happens at every decimal, binary, and GNU-style boundary. Fix: after computing the rounded mantissa, if it has reached base AND a larger suffix is available, step up exp by one before formatting the final string. Values already at the largest available suffix must be left alone (do not index past the end of the suffix tuple).",
+      "exact_imports": [],
+      "function_signatures": ["def naturalsize(value: float | str, binary: bool = False, gnu: bool = False, format: str = \"%.1f\") -> str"],
+      "step_by_step_implementation": [
+        "After computing exp = int(min(log(abs_bytes, base), len(suffix))), format the mantissa as it currently would be and check whether the rounded absolute value has reached base.",
+        "If it has reached base AND exp < len(suffix) (a larger suffix exists), increment exp by 1 before building the final return string.",
+        "Leave every other branch (the ==1 special case, the <base early return, gnu vs non-gnu spacing) exactly as-is."
+      ],
+      "dependencies": [],
+      "test_triad": {
+        "positive": "naturalsize(3000000) still returns '3.0 MB' unchanged",
+        "negative": "naturalsize(999999) currently returns '1000.0 kB'; it must return '1.0 MB'",
+        "negative_to_positive": "after fixing 999999, naturalsize(10**30) (already at the largest suffix, QB) still returns '1.0 QB' without indexing past the suffix tuple"
+      }
+    }
+  ]
+}

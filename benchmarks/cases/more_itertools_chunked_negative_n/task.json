@@ -1,0 +1,25 @@
+{
+  "tasks": [
+    {
+      "name": "guard chunked() against negative n",
+      "task_type": "dev",
+      "action": "modify",
+      "file_path": "mod.py",
+      "layer": "Backend",
+      "description": "chunked(iterable, n) has no guard for a negative n. Calling chunked([1,2,3], -1) currently leaks itertools.islice's internal error message ('Stop argument for islice() must be None or an integer: 0 <= x <= sys.maxsize') instead of a clear one. Add an up-front check: if n is not None and n < 0, raise ValueError('n must be at least 0'). n=None (single chunk) and n=0 (empty result) must keep their existing behavior, unchanged. Do not change any other behavior of chunked() or take().",
+      "exact_imports": [],
+      "function_signatures": ["def chunked(iterable, n, strict=False)"],
+      "step_by_step_implementation": [
+        "At the top of chunked(), before any other logic, check: if n is not None and n < 0.",
+        "If that check is true, raise ValueError('n must be at least 0').",
+        "Leave the rest of chunked() and take() exactly as they are."
+      ],
+      "dependencies": [],
+      "test_triad": {
+        "positive": "chunked('ABCDEF', 3) still yields [['A','B','C'], ['D','E','F']] unchanged",
+        "negative": "chunked('ABCDE', -1) raises ValueError matching 'n must be at least 0', not islice's internal error",
+        "negative_to_positive": "after the ValueError, chunked('ABCDE', 3) still works normally"
+      }
+    }
+  ]
+}

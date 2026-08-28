@@ -9,6 +9,9 @@ dist/
 data/
 .forge/
 forge_out/
+# benchmarks/results/<case_id>.json (the actual measured numbers) is
+# tracked; the workdir/ each run regenerates under it is not.
+benchmarks/results/*/
 forge_docker_homes/
 llmLog/
 .DS_Store

@@ -1,0 +1,15 @@
+{
+  "id": "humanize_naturalsize_rollover",
+  "source": {
+    "repo": "python-humanize/humanize",
+    "license": "MIT",
+    "pr_url": "https://github.com/python-humanize/humanize/pull/329",
+    "pr_title": "Fix `naturalsize()` rounding rollover at unit boundaries",
+    "base_commit": "976484a655df046aa6849f440a4f0cd44fc4918c",
+    "merge_commit": "823ad6096e1e5ba82ea876ce761fc2efebd76157"
+  },
+  "description": "A real, small merged bug fix: naturalsize() chose its suffix (kB/MB/...) before rounding, so rounding could push the mantissa up to the base while the suffix stayed stale (999999 -> '1000.0 kB' instead of '1.0 MB'). seed/mod.py is the verbatim pre-fix naturalsize()+suffixes table (i18n _gettext stubbed as identity, behavior-preserving for the English-locale tests here). seed/test_mod.py is the real parametrized test_naturalsize suite from that commit (trimmed for size, all 6 real new rollover regression assertions kept) — the oracle this case is judged against.",
+  "mode": "repair_only",
+  "timeout_s": 900,
+  "note": "generate/qa phases are skipped for this case — seed/ is copied in as-is and only `atomic-forge repair` runs. This case is a numeric/formatting bug (not a missing guard/index bug like the other two more-itertools cases), for some diversity in what kind of bug the repair loop has to localize and fix."
+}

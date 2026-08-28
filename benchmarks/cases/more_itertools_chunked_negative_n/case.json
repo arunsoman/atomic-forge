@@ -1,0 +1,14 @@
+{
+  "id": "more_itertools_chunked_negative_n",
+  "source": {
+    "repo": "more-itertools/more-itertools",
+    "license": "MIT",
+    "pr_url": "https://github.com/more-itertools/more-itertools/pull/1223",
+    "pr_title": "Raise a clear ValueError for negative n in chunked()",
+    "base_commit": "516f0a80fb7c2c8562dbb5e318fc2a3d44f4171f",
+    "merge_commit": "9ddc55c57390707d97d96302eea1992919c8d930"
+  },
+  "description": "A real, small merged bug fix: chunked(iterable, n) leaked itertools.islice's internal error message for a negative n instead of a clear ValueError. seed/mod.py is the verbatim pre-fix chunked()+take(), extracted to a standalone module. seed/test_mod.py is the real ChunkedTests test class from that commit's tests/test_more.py (imports adapted), including the real regression test the PR added — which is the oracle this case is judged against.",
+  "mode": "repair_only",
+  "note": "generate/qa phases are skipped for this case — seed/ is copied in as-is and only `atomic-forge repair` runs, so this measures the repair loop specifically: real bug, real failing test, does the loop produce a fix that makes the REAL test suite pass without breaking the other 6 real pre-existing tests in the same file."
+}

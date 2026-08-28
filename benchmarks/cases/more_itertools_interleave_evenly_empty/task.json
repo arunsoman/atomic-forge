@@ -1,0 +1,25 @@
+{
+  "tasks": [
+    {
+      "name": "handle empty iterables in interleave_evenly",
+      "task_type": "dev",
+      "action": "modify",
+      "file_path": "mod.py",
+      "layer": "Backend",
+      "description": "interleave_evenly(iterables, lengths=None) crashes with IndexError when given no iterables (interleave_evenly([]) or interleave_evenly([], lengths=[])). This happens because dims == len(lengths) == 0, and the very next block indexes lengths_desc[0] on an empty list. Every other degenerate case (one iterable, an empty sub-iterable) already returns a sensible result; this one should too: interleave_evenly([]) and interleave_evenly([], lengths=[]) should both yield nothing (an empty result), not raise.",
+      "exact_imports": [],
+      "function_signatures": ["def interleave_evenly(iterables, lengths=None)"],
+      "step_by_step_implementation": [
+        "After computing dims = len(lengths), check if dims == 0 (or equivalently `not dims`).",
+        "If so, return immediately (this is a generator function, so a bare `return` ends iteration and yields nothing) before any code that indexes lengths_desc/iters_desc.",
+        "Do not change any other behavior of interleave_evenly for non-empty input."
+      ],
+      "dependencies": [],
+      "test_triad": {
+        "positive": "interleave_evenly([[1,2,3],[4,5]]) still yields the same Bresenham-interleaved sequence unchanged",
+        "negative": "interleave_evenly([]) currently raises IndexError; it must instead yield nothing (empty result)",
+        "negative_to_positive": "interleave_evenly([], lengths=[]) also yields nothing, and interleave_evenly([[1,2,3]]) still works normally afterward"
+      }
+    }
+  ]
+}

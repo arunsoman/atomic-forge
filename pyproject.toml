@@ -32,3 +32,11 @@ atomic-forge = "atomic_forge.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+# Scope collection to the real suite. Without this, a bare `pytest` from
+# the repo root also walks benchmarks/ — whose cases/*/seed/test_mod.py
+# fixtures intentionally share a basename across cases (each is a
+# standalone extracted module, see benchmarks/README.md) and collide
+# under pytest's rootdir-based import when collected together.
+testpaths = ["tests"]
