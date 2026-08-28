@@ -1,0 +1,35 @@
+{
+  "tasks": [
+    {
+      "name": "create string utils",
+      "task_type": "dev",
+      "action": "create",
+      "file_path": "string_utils.py",
+      "description": "A small module with a slugify(text) function that lowercases, strips punctuation, and joins words with hyphens.",
+      "function_signatures": ["def slugify(text: str) -> str"],
+      "test_triad": {
+        "positive": "slugify('Hello, World!') == 'hello-world'",
+        "negative": "slugify('') == ''",
+        "negative_to_positive": "slugify('  Multiple   Spaces  ') == 'multiple-spaces'"
+      }
+    },
+    {
+      "name": "create counter",
+      "task_type": "dev",
+      "action": "create",
+      "file_path": "counter.py",
+      "description": "A Counter class with increment(), decrement(), and value() methods. decrement() must never take the value below zero.",
+      "function_signatures": [
+        "class Counter",
+        "def increment(self) -> int",
+        "def decrement(self) -> int",
+        "def value(self) -> int"
+      ],
+      "test_triad": {
+        "positive": "Counter().increment() returns 1, then 2 after another increment()",
+        "negative": "decrement() on a Counter at 0 raises ValueError (never goes negative)",
+        "negative_to_positive": "increment() once after the failed decrement() still returns 1"
+      }
+    }
+  ]
+}

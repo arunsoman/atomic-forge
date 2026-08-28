@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+data/
+.forge/
+forge_out/
+forge_docker_homes/
+llmLog/
+.DS_Store
