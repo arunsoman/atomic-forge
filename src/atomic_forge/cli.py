@@ -4,7 +4,11 @@ atomic-forge CLI.
     python -m atomic_forge run --tasks tasks.json --project-dir ./out
         # agentic generate (tools) -> QA tests -> agentic SOTA repair loop
 
-Phases: run | generate | qa | repair
+    python -m atomic_forge decompose --spec spec.md --out tasks.draft.json
+        # optional on-ramp: LLM drafts AtomicTask JSON from a loose spec,
+        # for a human to review/edit BEFORE it's handed to `run`
+
+Phases: run | generate | qa | repair | decompose
 """
 from __future__ import annotations
 
@@ -13,6 +17,7 @@ import sys
 from pathlib import Path
 
 from .batch_io import load_batch_json
+from .decompose import decompose_spec, write_draft_json
 from .llm import default_llm
 from .qa import qa_phase
 from .repair_agent import DEFAULT_TEST_CMD, repair_loop_agentic
@@ -25,7 +30,7 @@ from .trajectory import Trajectory
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="atomic-forge",
                                 description="Agentic code generation + SOTA repair loop.")
-    p.add_argument("phase", choices=["run", "generate", "qa", "repair"])
+    p.add_argument("phase", choices=["run", "generate", "qa", "repair", "decompose"])
     p.add_argument("--tasks", default="tasks.json")
     p.add_argument("--project-dir", default="./forge_out")
     p.add_argument("--test-cmd", default=None, help="force a test command (default: auto-detect)")
@@ -34,9 +39,26 @@ def main(argv=None) -> int:
     p.add_argument("--report", choices=["none", "jsonl"], default="none",
                    help="write artifacts/status/repair events to .forge/reports.jsonl")
     p.add_argument("--timeout", type=int, default=300)
+    p.add_argument("--spec", default=None, help="[decompose] path to a spec/issue text or markdown file")
+    p.add_argument("--out", default="tasks.draft.json", help="[decompose] where to write the draft AtomicTaskBatch JSON")
     args = p.parse_args(argv)
 
     llm = default_llm()
+
+    if args.phase == "decompose":
+        if not args.spec:
+            print("[forge] decompose requires --spec <file>", file=sys.stderr)
+            return 2
+        spec_text = Path(args.spec).read_text()
+        result = decompose_spec(spec_text, llm)
+        out_path = write_draft_json(result, args.out)
+        print(f"[forge] decompose: {result.summary()} -> {out_path}")
+        for r in result.rejected:
+            print(f"  REJECTED {r.raw.get('file_path', r.raw.get('name', '?'))}: {r.error.splitlines()[0]}")
+        print("[forge] DRAFT ONLY — review and edit before running `atomic-forge run --tasks "
+              f"{out_path}`; this was not validated the way a hand-written batch is.")
+        return 0 if result.tasks else 1
+
     batch = load_batch_json(args.tasks)
     project_dir = Path(args.project_dir).resolve()
     project_dir.mkdir(parents=True, exist_ok=True)
