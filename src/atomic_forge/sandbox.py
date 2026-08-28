@@ -163,32 +163,84 @@ def git_available() -> bool:
     return run(["git", "--version"], cwd=".").ok
 
 
+def _repo_toplevel(project_dir: str | Path) -> Optional[Path]:
+    """Resolves the git work-tree `project_dir` would act on — the
+    project's own repo if it has one, or an ENCLOSING repo's toplevel if
+    project_dir has no `.git` of its own but sits inside one. Returns
+    None if git can't find any repo at all from there."""
+    res = run(["git", "rev-parse", "--show-toplevel"], cwd=project_dir)
+    if not res.ok:
+        return None
+    try:
+        return Path(res.full_output.strip()).resolve()
+    except OSError:
+        return None
+
+
+def _is_own_repo(project_dir: str | Path) -> bool:
+    """True only if project_dir IS the toplevel of its own git work tree
+    — i.e. git commands run there act on project_dir, not on some
+    ancestor directory's repo. `git add -A` / `git commit` with no
+    pathspec operate repo-wide regardless of cwd, so treating "a repo
+    exists somewhere above here" as good enough would let a caller with
+    no `.git` of its own silently stage and commit into whatever repo
+    happens to contain it (confirmed live: this is how a `--project-dir`
+    nested in this very repo, with no `ensure_repo()` call first, ended
+    up committing this repo's own unrelated working-tree changes)."""
+    project_dir = Path(project_dir).resolve()
+    toplevel = _repo_toplevel(project_dir)
+    return toplevel is not None and toplevel == project_dir
+
+
 def ensure_repo(project_dir: str | Path) -> bool:
-    """git-init the project dir if needed. Returns True when a repo is usable."""
+    """git-init the project dir if needed. Returns True when a repo
+    ISOLATED to project_dir is usable — never inits into (or otherwise
+    claims) an enclosing repo project_dir merely happens to sit inside."""
     project_dir = Path(project_dir)
     if not git_available():
         return False
-    if not (project_dir / ".git").exists():
-        if not run(["git", "init", "-q"], cwd=project_dir).ok:
-            return False
-        gitignore = project_dir / ".gitignore"
-        if not gitignore.exists():
-            gitignore.write_text(
-                "__pycache__/\n*.pyc\n.venv/\n.forge_venv/\nnode_modules/\n"
-                ".pytest_cache/\ntarget/\n.gradle/\n.angular/\nbuild/\n.forge/\n"
-            )
-        cfg = run('git config user.email "forge@local" && git config user.name "atomic-forge"',
-                  cwd=project_dir)
-        if not cfg.ok:
-            return False
-        run(["git", "add", "-A"], cwd=project_dir)
-        run(["git", "commit", "-q", "-m", "forge: init"], cwd=project_dir)
+    if (project_dir / ".git").exists():
+        return True
+    enclosing = _repo_toplevel(project_dir)
+    if enclosing is not None and enclosing != project_dir.resolve():
+        print(f"[forge] WARNING: {project_dir} has no .git of its own and sits inside "
+              f"an existing repo at {enclosing} — refusing to git-init or commit here "
+              f"to avoid touching that repo's history. Pass a project_dir outside any "
+              f"existing repo (or pre-init one at project_dir) for git tracking.",
+              file=sys.stderr)
+        return False
+    if not run(["git", "init", "-q"], cwd=project_dir).ok:
+        return False
+    gitignore = project_dir / ".gitignore"
+    if not gitignore.exists():
+        gitignore.write_text(
+            "__pycache__/\n*.pyc\n.venv/\n.forge_venv/\nnode_modules/\n"
+            ".pytest_cache/\ntarget/\n.gradle/\n.angular/\nbuild/\n.forge/\n"
+        )
+    cfg = run('git config user.email "forge@local" && git config user.name "atomic-forge"',
+              cwd=project_dir)
+    if not cfg.ok:
+        return False
+    run(["git", "add", "-A"], cwd=project_dir)
+    run(["git", "commit", "-q", "-m", "forge: init"], cwd=project_dir)
     return True
 
 
 def commit(project_dir: str | Path, message: str) -> bool:
     """Stage everything and commit. Returns False (loudly, on stderr) if
-    git fails — the pipeline keeps working without VCS, but you lose undo/audit."""
+    git fails, OR if project_dir isn't the toplevel of its own repo — the
+    pipeline keeps working without VCS, but you lose undo/audit. Refusing
+    to commit here (rather than letting `git add -A` resolve upward into
+    an ancestor repo) is the fix for a real bug found live: a project_dir
+    with no `.git` of its own, nested inside another repo, previously got
+    its enclosing repo's ENTIRE unrelated working tree staged and
+    committed under a misleading "forge: generate ..." message."""
+    if not _is_own_repo(project_dir):
+        print(f"[forge] WARNING: git commit skipped ({message}): {project_dir} is not "
+              f"the toplevel of its own git repo — call ensure_repo(project_dir) first, "
+              f"or this project_dir sits inside another repo and committing here would "
+              f"touch that repo instead.", file=sys.stderr)
+        return False
     add = run(["git", "add", "-A"], cwd=project_dir)
     ci = run(["git", "commit", "-q", "--allow-empty", "-m", message], cwd=project_dir)
     if not (add.ok and ci.ok):

@@ -53,3 +53,33 @@ def test_ensure_repo_and_commit(tmp_path):
         return  # git not available in this environment — nothing more to check
     (tmp_path / "f.txt").write_text("x")
     assert commit(tmp_path, "test commit")
+
+
+def test_ensure_repo_refuses_nested_project_dir(tmp_path):
+    """Regression test for a real bug found live: a project_dir with no
+    .git of its own, nested inside an existing repo, must NOT be
+    git-init'd or committed into — `git add -A`/`git commit` with no
+    pathspec act repo-wide regardless of cwd, so doing so previously
+    staged and committed the ENCLOSING repo's entire unrelated working
+    tree under a misleading "forge: ..." message."""
+    outer = tmp_path / "outer"
+    outer.mkdir()
+    if not ensure_repo(outer):
+        return  # git not available in this environment — nothing more to check
+    (outer / "unrelated.txt").write_text("pre-existing, untracked, must stay untouched")
+    head_before = run(["git", "rev-parse", "HEAD"], cwd=outer).full_output.strip()
+
+    nested = outer / "project_dir"
+    nested.mkdir()
+    (nested / "generated.py").write_text("x = 1\n")
+
+    assert ensure_repo(nested) is False
+    assert not (nested / ".git").exists()
+    assert commit(nested, "forge: generate generated.py") is False
+
+    # The outer repo's history and untracked file must be exactly as before.
+    head_after = run(["git", "rev-parse", "HEAD"], cwd=outer).full_output.strip()
+    assert head_after == head_before
+    status = run(["git", "status", "--porcelain"], cwd=outer).full_output
+    assert "unrelated.txt" in status  # still untracked, never staged/committed
+    assert "generated.py" not in status  # nested/'s own file never touched the outer repo
