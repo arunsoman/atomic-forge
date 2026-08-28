@@ -3,9 +3,8 @@
 This repo doubles as a GitHub Action (`action.yml` + `Dockerfile` at the
 repo root) — a thin wrapper around the `atomic-forge` CLI, nothing more:
 no hosted service, no bot, everything runs inside the job's own container.
-This is deliberately the **only** integration this project ships (see
-`docs/adoption-and-distribution-plan.md`, objective 4) — CI is where the
-target audience (teams with an existing test suite) already is.
+This is deliberately the **only** integration this project ships — CI is
+where the target audience (teams with an existing test suite) already is.
 
 ## Usage
 

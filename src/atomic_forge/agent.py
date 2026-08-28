@@ -43,7 +43,7 @@ from .trajectory import Trajectory
 
 OBS_LIMIT = 4000
 
-#: Confirmed live (benchmarks/demo.md, 2026-08-29): a session whose SUBMIT
+#: Confirmed live (2026-08-29 benchmark run): a session whose SUBMIT
 #: keeps getting rejected (syntax gate, "patch does not apply", failing
 #: tests) but never aborts early runs to the full turn budget anyway —
 #: one dead-end sample burned all 25 turns after its 2nd rejected SUBMIT

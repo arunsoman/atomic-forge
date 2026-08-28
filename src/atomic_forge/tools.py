@@ -11,9 +11,16 @@ Design rules enforced here (bounded, self-describing responses):
 methods (view_file/search_symbol/file_skeleton/callers/callees/
 path_between/affected_by/failing_context/resolve_import) are backed by
 `symbols.SymbolIndex`, a small dependency-free index (exact for Python,
-regex-heuristic for JS/TS/Java — see that module's docstring). Bring your
-own richer backend (a real language server, an embeddings index, a code
-graph) by implementing the same `ToolBackend` protocol.
+regex-heuristic for JS/TS/Java — see that module's docstring).
+
+`GraphToolBackend` is the second bundled implementation: same protocol,
+same file I/O (delegated straight to a `LocalToolBackend`), but its
+query methods are backed by `codegraph.CodeGraph` — a persisted SQLite
+call graph instead of a rebuilt-every-process in-memory index, with
+precomputed edges so multi-hop `callers`/`callees`/`affected_by` are
+indexed lookups, not repeated regex scans. Bring your own richer backend
+still (a real language server, an embeddings index) by implementing the
+same `ToolBackend` protocol.
 """
 from __future__ import annotations
 
@@ -21,6 +28,7 @@ import inspect
 from pathlib import Path
 from typing import Optional, Protocol
 
+from .codegraph import CodeGraph
 from .symbols import SymbolIndex
 
 VIEW_WINDOW = 100
@@ -283,8 +291,145 @@ def _import_statement(defined_in: str, symbol: str, importing_file: str) -> str:
     return f"# import {symbol} from {defined_in}"
 
 
-def make_tools(project_dir, project: str = "") -> ToolBackend:
-    """Factory — today this only ever returns `LocalToolBackend`. Kept as
-    a function (not a bare constructor call) so a caller can swap in a
-    richer backend later without every call site changing."""
+class GraphToolBackend:
+    """`LocalToolBackend`'s filesystem operations (view/write/edit/delete/
+    resolve_import/failing_context — none of these benefit from a
+    persisted graph) delegated straight through, composed with
+    `codegraph.CodeGraph` for the query methods that do: search_symbol,
+    file_skeleton, callers, callees, path_between, affected_by. See this
+    module's docstring for why that split exists."""
+
+    def __init__(self, project_dir):
+        self.project_dir = Path(project_dir)
+        self._local = LocalToolBackend(project_dir)
+        self.graph = CodeGraph(project_dir=self.project_dir)
+        self.graph.build()
+
+    # -- index lifecycle -----------------------------------------------------
+    def reindex(self) -> dict:
+        self._local.reindex()
+        stats = self.graph.build()
+        return _envelope("reindex", [{**stats, **self.graph.counts()}],
+                         hint="persisted graph rebuilt incrementally (unchanged files were not re-parsed)")
+
+    def reindex_file(self, path: str) -> dict:
+        r = self._local.reindex_file(path)
+        f = self.project_dir / path
+        content = f.read_text(errors="replace") if f.is_file() else ""
+        self.graph.reindex_file(path, content)
+        return r
+
+    def health(self) -> dict:
+        counts = self.graph.counts()
+        return _envelope("health", [{"backend": "persisted-graph", **counts,
+                                     "db_path": str(self.graph.db_path)}])
+
+    def describe(self) -> dict:
+        return self._local.describe()
+
+    # -- reading (delegated — no graph benefit) -------------------------------
+    def view_file(self, path: str, start: int = 1, end: int = VIEW_WINDOW) -> dict:
+        return self._local.view_file(path, start, end)
+
+    def resolve_import(self, symbol: str, importing_file: str = "", language: str = "") -> dict:
+        hits = self.graph.find(symbol)
+        if not hits:
+            return _envelope("resolve_import", [], hint=f"{symbol!r} not found anywhere in the project")
+        return _envelope("resolve_import", [
+            {"symbol": s.name, "defined_in": s.file, "import_statement": _import_statement(s.file, s.name, importing_file)}
+            for s in hits
+        ])
+
+    def failing_context(self, test: str) -> dict:
+        return self._local.failing_context(test)
+
+    def list_pending_tasks(self) -> dict:
+        return self._local.list_pending_tasks()
+
+    # -- reading (graph-backed) -----------------------------------------------
+    def file_skeleton(self, path: str) -> dict:
+        syms = self.graph.file_skeleton(path)
+        if not syms:
+            f = self.project_dir / path
+            hint = "no symbols found" if f.is_file() else f"no such file: {path}"
+            return _envelope("file_skeleton", [], hint=hint)
+        return _envelope("file_skeleton", [
+            {"name": s.name, "kind": s.kind, "line": s.line, "signature": s.signature} for s in syms
+        ])
+
+    def search_symbol(self, name: str, kind: str = "") -> dict:
+        hits = self.graph.find(name, kind)
+        if not hits:
+            return _envelope("search_symbol", [], hint=f"no symbol named {name!r} found")
+        return _envelope("search_symbol", [
+            {"source_file": s.file, "name": s.name, "kind": s.kind, "line": s.line, "signature": s.signature}
+            for s in hits
+        ])
+
+    def callers(self, symbol: str, depth: int = 1) -> dict:
+        hits = self.graph.callers(symbol, depth=depth)
+        if not hits:
+            return _envelope("callers", [], hint=f"no call sites found for {symbol!r}")
+        return _envelope("callers", hits)
+
+    def callees(self, symbol: str, depth: int = 1) -> dict:
+        hits = self.graph.callees(symbol, depth=depth)
+        if not hits:
+            return _envelope("callees", [], hint=f"no known-symbol calls found inside {symbol!r}")
+        return _envelope("callees", hits)
+
+    def path_between(self, a: str, b: str) -> dict:
+        path = self.graph.path_between(a, b)
+        if path is None:
+            return _envelope("path_between", [], hint=f"no call path found from {a!r} to {b!r}")
+        return _envelope("path_between", [{"path": path}])
+
+    def affected_by(self, file_path: str, max_depth: int = 3, direction: str = "incoming") -> dict:
+        hits = self.graph.affected_by(file_path, max_depth, direction)
+        return _envelope("affected_by", hits,
+                         hint=None if hits else f"nothing depends on {file_path!r} yet" if direction == "incoming"
+                         else f"{file_path!r} calls nothing else known")
+
+    # -- writing (delegated, then both indexes updated via reindex_file) -----
+    def write_file(self, path: str, content: str) -> dict:
+        r = self._local.write_file(path, content)
+        self.graph.reindex_file(path, content)
+        return r
+
+    def edit_file(self, path: str, old_string: str, new_string: str, replace_all: bool = False) -> dict:
+        r = self._local.edit_file(path, old_string, new_string, replace_all)
+        f = self.project_dir / path
+        if f.is_file():
+            self.graph.reindex_file(path, f.read_text(errors="replace"))
+        return r
+
+    def delete_file(self, path: str) -> dict:
+        r = self._local.delete_file(path)
+        self.graph.reindex_file(path, "")
+        return r
+
+    def start_watch(self, debounce: float = 0.5) -> dict:
+        return self._local.start_watch(debounce)
+
+    def stop_watch(self) -> dict:
+        return self._local.stop_watch()
+
+    def __enter__(self) -> "GraphToolBackend":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.graph.close()
+
+
+def make_tools(project_dir, project: str = "", backend: str = "local") -> ToolBackend:
+    """Factory. `backend="local"` (default) returns `LocalToolBackend`
+    (in-memory index, rebuilt fresh every process — no setup, no state on
+    disk). `backend="graph"` returns `GraphToolBackend` (persisted SQLite
+    call graph at `<project_dir>/.forge/codegraph.db` — pays off across
+    multiple runs/resumes against the same project_dir, or when you want
+    multi-hop callers/callees/affected_by). Kept as a function (not a bare
+    constructor call) so a caller can swap backends without every call
+    site changing."""
+    if backend == "graph":
+        return GraphToolBackend(project_dir)
     return LocalToolBackend(project_dir)

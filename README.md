@@ -1,5 +1,7 @@
 # atomic-forge
 
+[![tests](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml/badge.svg)](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml)
+
 An agentic **generate → test → repair** loop for LLM code generation, built
 around three things most coding-agent libraries treat as an afterthought:
 
@@ -19,12 +21,10 @@ around three things most coding-agent libraries treat as an afterthought:
   static check that rejects a "passing" patch that silently breaks a caller
   elsewhere in the codebase.
 
-See [`benchmarks/`](benchmarks/) for real numbers behind these three
-claims (real merged GitHub bug fixes, run live against a real LLM
-endpoint — resolution, repair rounds, tokens, timing) and
-[`benchmarks/demo.md`](benchmarks/demo.md) for a full walkthrough of one
-real run, round-by-round, including the round that made things worse
-before the next one found the actual fix.
+See [`benchmarks/`](benchmarks/) for the harness and methodology behind
+these three claims — real merged GitHub bug fixes, run live against a
+real LLM endpoint, scored by actually running each repo's own test
+suite, not by asking a model which patch looks right.
 
 ## Why this exists
 
@@ -54,29 +54,28 @@ a second look:
   patched file still calls it, and auto-revert of any round that makes
   things worse.
 
-## What's *not* here
+## What this doesn't try to be
 
-This is the core engine, deliberately scoped down from a larger internal
-project it was extracted from:
-
-- No production "detect a live failure → patch → canary → roll out"
-  watchdog loop. The repair loop here operates on your local working copy.
-- No bundled code-intelligence backend (semantic search, a persisted code
-  graph, cross-repo analysis). `tools.py` ships one real, working
+- Not a language server or an embeddings-based semantic search engine.
+  `tools.py` ships two bundled `ToolBackend` implementations:
   `LocalToolBackend` (an in-memory symbol index — exact for Python via
-  `ast`, regex-heuristic for JS/TS/Java) behind a `ToolBackend` protocol;
-  bring your own richer backend by implementing the same protocol. A
-  worked second implementation —
+  `ast`, regex-heuristic for JS/TS/Java) and `GraphToolBackend` (the same
+  parsing, persisted to a SQLite call graph at `.forge/codegraph.db` with
+  precomputed edges, so multi-hop `callers`/`callees`/`affected_by` are
+  indexed lookups instead of a regex scan repeated per call — see
+  [codegraph.py](src/atomic_forge/codegraph.py)). A worked third
+  implementation —
   [`examples/ripgrep_tool_backend.py`](examples/ripgrep_tool_backend.py),
-  a live-`rg` backend with no index/build step, useful on repos where
-  building `LocalToolBackend`'s index up front is itself the bottleneck —
-  is included as a reference, not a bundled dependency; its docstring
-  states the trade-off (textual call-site heuristics, not a resolved call
-  graph) rather than glossing over it.
-- No story-batched multi-file-in-one-completion generation mode (a real
-  optimization in the project this was extracted from, cut here to keep
-  the surface area reviewable — `generate_batch_agentic`'s per-task /
-  dependency-ordered path is what ships).
+  a live-`rg` backend with no index/build step — is included as a
+  reference for repos where even that up-front build is the bottleneck.
+  Bring your own richer backend (a real language server, cross-repo
+  analysis) by implementing the same protocol.
+- Not a general production-infrastructure platform. `watchdog.py`'s
+  `WatchdogLoop` does implement the detect → repair → canary → promote/
+  rollback loop end to end (see below) — but its bundled `DeployTarget`
+  is a real local-process/subprocess-and-reverse-proxy reference
+  implementation, not Kubernetes or a real load balancer. Implement the
+  same `DeployTarget` protocol against your own infra for that.
 
 ## Install
 
@@ -211,6 +210,41 @@ diff = diff_file_hashes(project_dir, record.file_hashes)
 # diff.changed   -> regenerate only these
 ```
 
+## Production watchdog
+
+`watchdog.py`'s `WatchdogLoop` closes the loop past your local working
+copy: detect a live failure, repair it with the exact same evidence-based
+localization + agentic sampling `repair_agent` uses, land the fix as a
+canary, and promote or roll back on a real health check — no local test
+suite required, since the canary's own health check is the pass/fail
+oracle.
+
+```bash
+atomic-forge watch --project-dir ./out --log-file /var/log/app.log \
+    --deploy-cmd "python app.py {port}" --canary-percent 10
+```
+
+- **Detect** — `LogFailureDetector` tails a log file for Python
+  tracebacks, reuses `repair_agent.extract_signals` to parse them (no
+  second parser to keep in sync), and dedupes by fingerprint so a
+  steadily-repeating crash surfaces once, not once per poll.
+- **Repair** — the traceback is localized and patched the same way a
+  failing local test would be (`repair_agent.localize` +
+  `_attempt_patch`), then committed.
+- **Canary** — `LocalProcessCanaryDeployer` runs the pre-patch and
+  post-patch code as two real subprocesses on two real ports, splits
+  real HTTP traffic between them through a small stdlib reverse proxy,
+  and health-checks the canary directly (not through the proxy, so a bad
+  canary at 10% traffic still fails its own check immediately).
+- **Promote / rollback** — N consecutive healthy checks promotes the
+  canary (stable process torn down); any unhealthy check rolls back
+  (canary torn down, the patch reverted and committed).
+
+Both `FailureDetector` and `DeployTarget` are protocols with one real
+reference implementation each — bring your own (a real error tracker, a
+real load balancer/Kubernetes) by implementing the same protocol; nothing
+else about `WatchdogLoop` changes.
+
 ## Architecture
 
 | Module | What it does |
@@ -220,12 +254,14 @@ diff = diff_file_hashes(project_dir, record.file_hashes)
 | `planner.py` | Dependency-ordered execution planning (Kahn topological sort) |
 | `agent.py` | The agentic session loop (TOOL / RUN / PATCH / SUBMIT grammar, or real function-calling) |
 | `llm.py` | `ChatLLM` protocol + `OpenAICompatLLM` + provider resolution |
-| `tools.py` | `ToolBackend` protocol + `LocalToolBackend` (bring your own richer backend) |
-| `symbols.py` | The dependency-free symbol index behind `LocalToolBackend` |
+| `tools.py` | `ToolBackend` protocol + `LocalToolBackend` + `GraphToolBackend` (bring your own richer backend) |
+| `codegraph.py` | Persisted SQLite call graph (precomputed edges, incremental rebuild) behind `GraphToolBackend` |
+| `symbols.py` | The dependency-free symbol index behind `LocalToolBackend` and `codegraph.py`'s parsing |
 | `patch.py` | The one canonical SEARCH/REPLACE parser |
-| `generator.py` / `generate_agent.py` | Prompt building + the agentic/batch generation pipeline |
+| `generator.py` / `generate_agent.py` | Prompt building + the agentic/batch generation pipeline (including the direct multi-file-in-one-completion fast path for independent, dependency-free tasks) |
 | `qa.py` | Synthesizes a test file per `test_triad`, gap-filling coverage |
 | `repair_agent.py` / `repair.py` | The SOTA repair loop: signals → localize → sample → select → gate |
+| `watchdog.py` | Production loop: detect a live failure → repair → canary → promote/rollback |
 | `sandbox.py` / `docker_env.py` / `stacks.py` | Command execution, git, lint gate, test-stack detection, optional Docker sandboxing |
 | `concurrency.py` | The adaptive rate-limit-aware worker pool |
 | `checkpoint.py` / `checkpoint_store.py` | Crash-safe, resumable run state (SQLite) |

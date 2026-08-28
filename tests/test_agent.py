@@ -57,8 +57,8 @@ def test_run_agent_retries_after_submit_rejection(tmp_path):
 
 
 def test_run_agent_aborts_early_after_repeated_rejected_submits(tmp_path):
-    """Regression test for a real cost finding (benchmarks/demo.md,
-    2026-08-29): a session whose SUBMIT keeps getting rejected but never
+    """Regression test for a real cost finding (2026-08-29 benchmark run):
+    a session whose SUBMIT keeps getting rejected but never
     aborts runs to the full turn budget anyway, dominating that run's
     token cost. 3 rejected SUBMITs (never an identical patch twice, so
     the "same action 5x" stuck detector never fires) must stop the
