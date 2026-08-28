@@ -43,6 +43,20 @@ from .trajectory import Trajectory
 
 OBS_LIMIT = 4000
 
+#: Confirmed live (benchmarks/demo.md, 2026-08-29): a session whose SUBMIT
+#: keeps getting rejected (syntax gate, "patch does not apply", failing
+#: tests) but never aborts early runs to the full turn budget anyway —
+#: one dead-end sample burned all 25 turns after its 2nd rejected SUBMIT
+#: (both from a SEARCH block using tabs against a space-indented file),
+#: dominating that run's token cost. A rejected SUBMIT is a completed,
+#: unambiguous "didn't work" signal — no need for domain knowledge of
+#: *why* (syntax gate vs. failing tests vs. anything else) to know that
+#: 3 of them in one session means the remaining budget has low expected
+#: value. Kept separate from `action_counts`' "identical action 5x" stuck
+#: detector, which never fires here since each rejected attempt is a
+#: different patch.
+REJECTED_SUBMIT_LIMIT = 3
+
 AGENT_GRAMMAR = """You operate ONE action per response. After each action you receive an OBSERVATION. Then act again.
 
 You have NO fixed tool set. The tools available for THIS run are listed below, under
@@ -503,6 +517,7 @@ def run_agent(llm: ChatLLM, tools: ToolBackend, project_dir, system: str,
     last_patch: Optional[str] = None
     action_counts: dict[str, int] = {}
     consecutive_errors = 0
+    rejected_submits = 0
     # Turns since the last non-empty PATCH — NOT reset by a SUBMIT
     # rejection, so a model that goes back to pure TOOL/RUN exploration
     # after being rejected (instead of revising and re-submitting) keeps
@@ -543,6 +558,13 @@ def run_agent(llm: ChatLLM, tools: ToolBackend, project_dir, system: str,
                                          "content": truncate(result, OBS_LIMIT)})
                         if ok:
                             return AgentResult(True, turn, last_patch, messages=messages)
+                        rejected_submits += 1
+                        if rejected_submits >= REJECTED_SUBMIT_LIMIT:
+                            traj.log(f"{tag}_abort", reason="rejected submits", turn=turn,
+                                     rejected_submits=rejected_submits)
+                            return AgentResult(False, turn, last_patch,
+                                               f"{rejected_submits} rejected SUBMITs — stopping early "
+                                               f"instead of burning the rest of the turn budget", messages)
                         continue
                     if tc.name == "patch":
                         result, is_error, new_patch = _handle_patch_call(tc.arguments)
@@ -607,6 +629,13 @@ def run_agent(llm: ChatLLM, tools: ToolBackend, project_dir, system: str,
             traj.log(f"{tag}_submit", turn=turn, accepted=ok, feedback=feedback[:300])
             if ok:
                 return AgentResult(True, turn, last_patch, messages=messages)
+            rejected_submits += 1
+            if rejected_submits >= REJECTED_SUBMIT_LIMIT:
+                traj.log(f"{tag}_abort", reason="rejected submits", turn=turn,
+                         rejected_submits=rejected_submits)
+                return AgentResult(False, turn, last_patch,
+                                   f"{rejected_submits} rejected SUBMITs — stopping early instead of "
+                                   f"burning the rest of the turn budget", messages)
             messages += [{"role": "assistant", "content": output},
                          {"role": "user", "content": f"SUBMIT REJECTED.\n{feedback}\nFix and act again."}]
             continue

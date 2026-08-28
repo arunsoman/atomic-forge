@@ -56,6 +56,33 @@ def test_run_agent_retries_after_submit_rejection(tmp_path):
     assert len(attempts) == 2
 
 
+def test_run_agent_aborts_early_after_repeated_rejected_submits(tmp_path):
+    """Regression test for a real cost finding (benchmarks/demo.md,
+    2026-08-29): a session whose SUBMIT keeps getting rejected but never
+    aborts runs to the full turn budget anyway, dominating that run's
+    token cost. 3 rejected SUBMITs (never an identical patch twice, so
+    the "same action 5x" stuck detector never fires) must stop the
+    session well short of a generous max_turns."""
+    tools = LocalToolBackend(tmp_path)
+    traj = Trajectory(tmp_path)
+    llm = ScriptedChatLLM([
+        "PATCH\n```python\nattempt 1\n```", "SUBMIT",
+        "PATCH\n```python\nattempt 2\n```", "SUBMIT",
+        "PATCH\n```python\nattempt 3\n```", "SUBMIT",
+        # Never reached if early-abort works — max_turns=20 would happily
+        # run this far if nothing stopped it sooner.
+        "PATCH\n```python\nattempt 4\n```", "SUBMIT",
+    ])
+
+    def check(patch):
+        return False, "still wrong"  # never accepts
+
+    result = run_agent(llm, tools, tmp_path, "system", "task", traj, submit_check=check, max_turns=20)
+    assert not result.success
+    assert "rejected SUBMIT" in result.abort_reason
+    assert result.turns < 20  # stopped well short of the generous budget
+
+
 def test_run_agent_aborts_on_turn_budget(tmp_path):
     tools = LocalToolBackend(tmp_path)
     traj = Trajectory(tmp_path)
