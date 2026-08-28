@@ -1,0 +1,67 @@
+name: "atomic-forge"
+description: >
+  Run the atomic-forge generate -> test -> repair loop in CI: generate
+  files from an AtomicTaskBatch, synthesize tests from each task_triad,
+  run the real suite, and repair failures with the localize -> sample ->
+  select -> gate loop. Thin wrapper around the `atomic-forge` CLI — no
+  hosted service, nothing runs outside this job.
+author: "Arun Soman"
+branding:
+  icon: "cpu"
+  color: "purple"
+
+inputs:
+  tasks:
+    description: "Path to the AtomicTaskBatch JSON file (relative to the checkout)."
+    required: false
+    default: "tasks.json"
+  project-dir:
+    description: "Directory to generate into (relative to the checkout)."
+    required: false
+    default: "forge_out"
+  api-key:
+    description: >
+      API key for the OpenAI-compatible LLM endpoint (FORGE_API_KEY).
+      Required — pass a secret, e.g. ${{ secrets.FORGE_API_KEY }}.
+    required: true
+  base-url:
+    description: "OpenAI-compatible base URL (FORGE_BASE_URL). Omit to use OpenAI itself."
+    required: false
+    default: ""
+  model:
+    description: "Model name (FORGE_MODEL)."
+    required: false
+    default: ""
+  test-cmd:
+    description: "Force a test command. Omit to auto-detect (pytest/npm test)."
+    required: false
+    default: ""
+  max-rounds:
+    description: "Max repair rounds."
+    required: false
+    default: "3"
+  samples:
+    description: "Patch candidates sampled per repair round."
+    required: false
+    default: "2"
+  timeout:
+    description: "Per-command timeout in seconds."
+    required: false
+    default: "300"
+  report:
+    description: "Write artifacts/status/repair events to .forge/reports.jsonl ('jsonl' or 'none')."
+    required: false
+    default: "jsonl"
+
+outputs:
+  success:
+    description: "'true' if the repair loop finished with zero failing tests, else 'false'."
+  project-dir:
+    description: "The directory atomic-forge generated into — upload as a build artifact to inspect."
+  trajectory-path:
+    description: "Path to the run's .forge/trajectory.jsonl audit log, if the run got far enough to produce one."
+
+runs:
+  using: "docker"
+  image: "Dockerfile"
+  args: []
