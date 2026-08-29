@@ -22,6 +22,17 @@ Public API:
     default_branch(project_dir) -> str
         the repo's real default branch, resolved via `gh` (falls back to
         main/master).
+    default_branch_for(upstream, project_dir=None) -> str
+        same, for an owner/repo string rather than a local checkout — used
+        by the fork-only PR path. Verifies main/master actually exist
+        before guessing (and raises if neither does) rather than assuming
+        main; logs an exit_audit note when it had to fall back.
+    raise_pr_via_fork(project_dir, *, upstream, title, body="", base=None,
+                      dry_run=False) -> dict
+        fork-only PR: push to the authenticated user's (or FORGE_FORK_ORG's)
+        fork of `upstream` and open a PR from it. Every PR body forge writes
+        should include forge_footer() — see classify_pr_create_error() for
+        the retry/fail-fast triage of `gh pr create` failures.
 
 `raise_pr` never force-pushes and never touches the default branch — it only
 adds a feature branch and opens a PR. It is deliberately the only GitHub side
@@ -191,20 +202,26 @@ def raise_pr_via_fork(project_dir, *, upstream: str, title: str, body: str = "",
         if r.returncode == 0:
             break
         last_err = (r.stderr or r.stdout or "").strip()
-        if "correct permissions to execute `CreatePullRequest`" in last_err:
-            # upstream locks PRs to collaborators (anti-AI-slop gates et al);
-            # retries cannot help — say so, once, loudly
+        kind = classify_pr_create_error(last_err)
+        if kind == "lockdown":
             raise RuntimeError(
                 "upstream blocks PR creation for non-collaborators "
                 "(repo-level contributor gate — e.g. Textualize/rich's AI-slop "
                 "lockdown). The validated fix branch remains pushed to the fork; "
                 "an authorized account (collaborator status or approved path per "
                 "the repo's AI policy) must open it. gh said: " + last_err)
-        race = ("CreatePullRequest" in last_err
-                or "Head sha was not found" in last_err
-                or "field: headRepository" in last_err
-                or "Fork collab" in last_err)
-        if not race:
+        if kind == "no_commits":
+            # Not a fork-sync race — retrying can't fix an empty diff. This
+            # means the branch forge pushed has ZERO commits ahead of base:
+            # some caller reached raise_pr_via_fork() after a "success" that
+            # never actually produced a patch (see repair_agent's initial
+            # already-green short-circuit, which fix.py now checks for
+            # before ever getting here — this is a defense-in-depth catch,
+            # not the primary fix). Fail fast rather than burn 4 retries.
+            raise RuntimeError(
+                "gh pr create failed: the pushed branch has no commits ahead "
+                f"of {base!r} — nothing to open a PR for. gh said: " + last_err)
+        if kind != "race":
             raise RuntimeError(f"gh pr create failed: {last_err}")
         time.sleep(3 * (attempt + 1))
         try:
@@ -218,14 +235,66 @@ def raise_pr_via_fork(project_dir, *, upstream: str, title: str, body: str = "",
             "fork": fork_url, "title": title}
 
 
-def default_branch_for(upstream: str) -> str:
-    """Default branch of an owner/repo, via `gh` (falls back to 'main')."""
+def classify_pr_create_error(err: str) -> str:
+    """Categorize a `gh pr create` failure so `raise_pr_via_fork` knows
+    whether to retry, fail fast, or raise a specific "you need a human"
+    error. Pulled out as its own function so each category has a direct
+    unit test instead of only being exercisable through the full
+    fork+push+retry integration path.
+
+    Returns one of: "lockdown" (upstream gates PRs to collaborators —
+    retrying never helps), "no_commits" (the branch has zero commits ahead
+    of base — retrying never helps), "race" (fork-sync lag — worth
+    retrying), "other" (unrecognized — surface as-is, don't retry blind).
+
+    Matching is case-insensitive throughout: `gh`'s actual GraphQL error
+    text annotates the mutation name in lowercase, `(createPullRequest)` —
+    a capitalized-only match here previously never fired, so the "race"
+    category never actually retried (see git history)."""
+    low = (err or "").lower()
+    if "correct permissions to execute `createpullrequest`" in low:
+        return "lockdown"
+    if "no commits between" in low:
+        return "no_commits"
+    if ("createpullrequest" in low or "head sha was not found" in low
+            or "field: headrepository" in low or "fork collab" in low):
+        return "race"
+    return "other"
+
+
+def default_branch_for(upstream: str, project_dir=None) -> str:
+    """Default branch of an owner/repo (owner/repo string), via `gh`.
+
+    The `gh api` call is authoritative and should resolve for any real,
+    reachable repo — it's the fallback path that used to just guess "main"
+    unconditionally, silently wrong for the (still common) repos still on
+    "master". Now: verify main/master actually exist via `git ls-remote`
+    before picking one, and raise rather than guess if neither does. Every
+    time this DOESN'T take the authoritative path, it's worth a fail-fast
+    audit note (`project_dir` is optional — pass it to get one; the
+    fork/PR pipeline that consumes this passes its own project_dir)."""
     r = subprocess.run(
         ["gh", "repo", "view", upstream, "--json", "defaultBranchRef", "-q", ".defaultBranchRef.name"],
         capture_output=True, text=True)
     if r.returncode == 0 and r.stdout.strip():
         return r.stdout.strip()
-    return "main"
+    url = f"https://github.com/{upstream}.git"
+    for cand in ("main", "master"):
+        probe = subprocess.run(["git", "ls-remote", "--exit-code", "--heads", url, cand],
+                               capture_output=True, text=True, timeout=30)
+        if probe.returncode == 0 and probe.stdout.strip():
+            if project_dir is not None:
+                from .exit_audit import record_exit
+                record_exit(project_dir, reason="ambiguous_branch_defaulted",
+                            detail=f"gh repo view failed ({(r.stderr or r.stdout).strip()[:200]}); "
+                                   f"defaulted to {cand!r} after verifying it exists on {upstream}",
+                            extra={"upstream": upstream, "branch": cand})
+            return cand
+    raise RuntimeError(
+        f"could not resolve {upstream}'s default branch: gh api failed "
+        f"({(r.stderr or r.stdout).strip()[:200]}) and neither 'main' nor "
+        "'master' exists on the remote — this repo uses some other branch "
+        "name forge can't guess.")
 
 
 _FORGE_URL = "https://github.com/kannamma-labs/atomic-forge"

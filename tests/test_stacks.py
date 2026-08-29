@@ -110,3 +110,39 @@ def test_is_test_file_rust():
 def test_no_stack_still_none_with_only_readme(tmp_path):
     (tmp_path / "README.md").write_text("# hello\n")
     assert detect_test_stack(tmp_path) is None
+
+
+# ---------------------------------------------- python: pyproject-only ----
+def test_pyproject_only_python_project_gets_isolated_install(tmp_path):
+    """No requirements.txt, just pyproject.toml (poetry/hatch/setuptools) —
+    a bare `python -m pytest` used to run against the ambient host env with
+    the project itself never installed (ModuleNotFoundError in conftest —
+    confirmed on python-poetry/cleo) and addopts plugins missing (pytest's
+    own "unrecognized arguments" — confirmed on benoitc/gunicorn). Both
+    surfaced identically as an opaque bootstrap_fail. Now: isolated venv,
+    editable install, curated pytest plugins."""
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = \"x\"\n")
+    stack = detect_test_stack(tmp_path)
+    assert stack is not None
+    assert ".forge_venv" in stack.cmd
+    assert "pip install -q -e ." in stack.cmd
+    assert "pytest-cov" in stack.cmd
+    assert stack.cmd.rstrip().endswith(
+        ".forge_venv/bin/python -m pytest -q --continue-on-collection-errors")
+
+
+def test_pyproject_with_requirements_still_uses_requirements(tmp_path):
+    # requirements.txt takes priority when both exist — unchanged behavior.
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = \"x\"\n")
+    (tmp_path / "requirements.txt").write_text("pytest\n")
+    stack = detect_test_stack(tmp_path)
+    assert "-r requirements.txt" in stack.cmd
+    assert "pip install -q -e ." not in stack.cmd
+
+
+def test_bare_test_files_no_manifest_still_bare_pytest(tmp_path):
+    # no pyproject.toml, no requirements.txt — nothing to install, keep the
+    # old bare-pytest behavior (nothing regresses for this shape).
+    (tmp_path / "test_x.py").write_text("def test_x():\n    assert True\n")
+    stack = detect_test_stack(tmp_path)
+    assert stack.cmd == "python -m pytest -q --continue-on-collection-errors"

@@ -53,13 +53,24 @@ def require_cie() -> None:
 
 def cie_index(project_dir: Path, db_path: Path, timeout: int = 600) -> str:
     """Index `project_dir` with CIE so the graph is fully built before the
-    agent starts. Returns the last line of CIE's stdout (a one-line summary),
-    or a short stderr slice on failure."""
+    agent starts. Returns the last line of CIE's stdout (a one-line summary).
+
+    Raises RuntimeError on a non-zero exit — a failed index used to be
+    silently swallowed here (the error text just got returned as if it were
+    a normal summary), leaving the MCP bridge to start against a missing or
+    partial `graph.db` a moment later. That's the ambient-caller path to CIE
+    not actually being usable as the main tool backend even though nothing
+    fails loudly at the point where it should — see `fix.py`'s "cie
+    unavailable" fail-fast, which depends on this actually raising."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     r = subprocess.run([sys.executable, "-m", "cie.cli", "index", str(project_dir),
                         "--db", str(db_path)],
                        env=env, capture_output=True, text=True, timeout=timeout)
+    if r.returncode != 0:
+        raise RuntimeError(
+            f"cie index failed (exit {r.returncode}): "
+            f"{(r.stderr or r.stdout).strip()[:500] or 'no output'}")
     return (r.stdout.strip().splitlines()[-1] if r.stdout.strip()
             else r.stderr[:200] or "cie index produced no output")
 

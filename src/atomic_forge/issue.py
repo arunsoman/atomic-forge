@@ -37,12 +37,23 @@ def upstream_slug(owner: str, repo: str) -> str:
     return f"{owner}/{repo}"
 
 
+#: Cap on how much comment text feeds the test-gen agent — comments on a
+#: popular repo's issue can run to dozens of back-and-forths; the bug-report
+#: text just needs enough of the thread to catch a maintainer's repro steps
+#: or a clarifying traceback, not the whole history.
+_MAX_COMMENT_CHARS = 6000
+
+
 def fetch_issue(owner: str, repo: str, number: int) -> dict:
-    """Fetch issue title + body via `gh issue view --json`. Returns
-    {"title", "body", "url", "number", "owner", "repo"}."""
+    """Fetch issue title + body + comments via `gh issue view --json`.
+    Returns {"title", "body", "comments", "url", "number", "owner", "repo"}
+    — `comments` is gh's own list of {"author", "body", ...} dicts, oldest
+    first. Comments matter for testgen: the original report is often thin,
+    and a maintainer's repro steps or a "same thing happens when ..." from
+    another user often land as a follow-up comment, not an edit to the body."""
     r = subprocess.run(
         ["gh", "issue", "view", str(number), "--repo", f"{owner}/{repo}",
-         "--json", "title,body,url"],
+         "--json", "title,body,url,comments"],
         capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError(f"gh issue view {owner}/{repo}#{number} failed: "
@@ -50,16 +61,35 @@ def fetch_issue(owner: str, repo: str, number: int) -> dict:
     import json
     data = json.loads(r.stdout)
     return {"title": data.get("title", ""), "body": data.get("body", ""),
+            "comments": data.get("comments", []),
             "url": data.get("url", ""), "number": number, "owner": owner, "repo": repo}
 
 
 def issue_to_bug_description(issue: dict) -> str:
-    """The text fed to the test-gen agent: the issue title + body."""
+    """The text fed to the test-gen agent: title + body + comment thread
+    (bounded — see _MAX_COMMENT_CHARS). Backward compatible: an `issue` dict
+    with no "comments" key (or an empty one) behaves exactly as before."""
     title = issue.get("title", "").strip()
     body = issue.get("body", "").strip()
-    if body:
-        return f"{title}\n\n{body}"
-    return title or "(no issue body)"
+    text = f"{title}\n\n{body}" if body else (title or "(no issue body)")
+    comments = issue.get("comments") or []
+    if not comments:
+        return text
+    blocks = []
+    total = 0
+    for c in comments:
+        cbody = (c.get("body") or "").strip()
+        if not cbody:
+            continue
+        author = (c.get("author") or {}).get("login") if isinstance(c.get("author"), dict) else c.get("author")
+        block = f"@{author or 'unknown'}: {cbody}"
+        if total + len(block) > _MAX_COMMENT_CHARS:
+            break
+        blocks.append(block)
+        total += len(block)
+    if not blocks:
+        return text
+    return text + "\n\n## Comments\n" + "\n\n".join(blocks)
 
 
 def clone_repo(owner: str, repo: str, dest: Path, depth: int = 1) -> Path:

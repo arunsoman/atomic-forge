@@ -40,6 +40,42 @@ def test_issue_to_bug_description():
     assert issue_to_bug_description({"title": "", "body": ""}) == "(no issue body)"
 
 
+def test_issue_to_bug_description_includes_comments():
+    issue = {"title": "T", "body": "B", "comments": [
+        {"author": {"login": "maintainer"}, "body": "actually repro with x=1"},
+        {"author": "userbot", "body": "same here on 3.12"},
+    ]}
+    out = issue_to_bug_description(issue)
+    assert out.startswith("T\n\nB")
+    assert "## Comments" in out
+    assert "@maintainer: actually repro with x=1" in out
+    assert "@userbot: same here on 3.12" in out
+
+
+def test_issue_to_bug_description_no_comments_key_is_unaffected():
+    # backward compatible: an issue dict with no "comments" at all (the old
+    # shape, or a comment-driven fix's synthetic issue dict) behaves exactly
+    # as before this feature was added.
+    assert issue_to_bug_description({"title": "T", "body": "B"}) == "T\n\nB"
+
+
+def test_issue_to_bug_description_skips_empty_comments():
+    issue = {"title": "T", "body": "B", "comments": [{"author": "x", "body": "   "}]}
+    assert "## Comments" not in issue_to_bug_description(issue)
+
+
+def test_issue_to_bug_description_truncates_long_comment_threads():
+    big_comment = "x" * 5000
+    issue = {"title": "T", "body": "B", "comments": [
+        {"author": "a", "body": big_comment},
+        {"author": "b", "body": big_comment},  # would exceed _MAX_COMMENT_CHARS combined
+        {"author": "c", "body": "this one should be dropped"},
+    ]}
+    out = issue_to_bug_description(issue)
+    assert "@a:" in out
+    assert "this one should be dropped" not in out  # cut off once the char budget is hit
+
+
 def test_make_test_cmd_uses_venv_python():
     cmd = make_test_cmd("/p/.venv/bin/python", "tests/test_forge_issue_1.py")
     assert cmd.startswith("/p/.venv/bin/python -m pytest ")
@@ -148,7 +184,7 @@ def _stub_chain(monkeypatch, *, oracle_fails, repair_success, green=True):
         monkeypatch.setattr(F, "_ground_truth_green", lambda pd, cmd, timeout=300: True)
     else:
         monkeypatch.setattr(F, "_ground_truth_green", lambda pd, cmd, timeout=300: False)
-    monkeypatch.setattr(F, "default_branch_for", lambda upstream: "main")
+    monkeypatch.setattr(F, "default_branch_for", lambda upstream, project_dir=None: "main")
     raised = {"called": False}
     def _raise_pr(pd, *, upstream, title, body, base, dry_run=False):
         raised["called"] = True
@@ -263,7 +299,7 @@ def test_run_fix_from_comment_scopes_bug_to_file(monkeypatch, fake_repo):
                 "final_failures": 0, "repaired_files": ["mod.py"]}
     monkeypatch.setattr(F, "repair_loop_agentic", _repair)
     monkeypatch.setattr(F, "_ground_truth_green", lambda pd, cmd, timeout=300: True)
-    monkeypatch.setattr(F, "default_branch_for", lambda upstream: "main")
+    monkeypatch.setattr(F, "default_branch_for", lambda upstream, project_dir=None: "main")
 
     raised = {"called": False}
     def _raise_pr(pd, *, upstream, title, body, base, dry_run=False):
@@ -298,3 +334,141 @@ def test_run_fix_from_comment_uses_distinct_test_file_from_issue_fix(monkeypatch
     assert r["success"] is True
     assert r["test_file"] == "tests/test_forge_src_app_mod_py.py"
     assert raised["called"] is True
+
+
+# ------------------------------------------------------- fail-fast paths --
+def test_run_fix_cie_unavailable_fails_fast(monkeypatch, fake_repo):
+    """CIE is the only code-understanding backend testgen/repair use — if
+    indexing/the MCP bridge/the tool manifest can't be stood up at all,
+    abort immediately with a clear reason instead of a raw traceback."""
+    import atomic_forge.fix as F
+    monkeypatch.setattr(F, "require_cie", lambda: None)
+    monkeypatch.setattr(F, "setup_python_env", lambda pd, install_cmd=None: "python")
+    def _boom(pd, db):
+        raise RuntimeError("cie index failed (exit 1): boom")
+    monkeypatch.setattr(F, "cie_index", _boom)
+    ib = fake_repo / "issue.txt"; ib.write_text("bug")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=ib, dry_run=True)
+    assert r["success"] is False
+    assert r["stage"] == "cie_setup"
+    assert "CIE unavailable" in r["reason"]
+    from atomic_forge.exit_audit import read_exits
+    exits = read_exits(fake_repo)
+    assert exits[-1]["reason"] == "cie_unavailable"
+
+
+def test_run_fix_aborts_when_repair_finds_test_already_passing(monkeypatch, fake_repo):
+    """repair_loop_agentic's OWN round-0 check found the test green, despite
+    oracle_fails_on_buggy() having just confirmed it fails — a flake/env
+    contradiction, not a fix. Must fail fast rather than proceed to PR-raise
+    an unchanged branch (the exact way 3 real attempts were lost in the
+    round-2 sweep: psf/black#5214, psf/black#4420, Delgan/loguru#1502)."""
+    import atomic_forge.fix as F
+    raised = _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
+    def _repair(pd, llm, tools, traj, **kw):
+        return {"success": True, "rounds": 0, "initial_failures": 0,
+                "final_failures": 0, "repaired_files": []}
+    monkeypatch.setattr(F, "repair_loop_agentic", _repair)
+    ib = fake_repo / "issue.txt"; ib.write_text("bug")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=ib, dry_run=True)
+    assert r["success"] is False
+    assert "already passing" in r["reason"]
+    assert raised["called"] is False  # never reached PR-raise
+    from atomic_forge.exit_audit import read_exits
+    exits = read_exits(fake_repo)
+    assert exits[-1]["reason"] == "test_already_passing"
+
+
+def test_run_fix_pr_create_failure_is_caught_cleanly(monkeypatch, fake_repo):
+    """A validated fix whose PR creation fails (e.g. a genuine fork-sync
+    race that outlasts the retry budget) must return a clean failed result,
+    not propagate a raw exception out of run_fix()."""
+    import atomic_forge.fix as F
+    _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
+    def _raise_pr(pd, *, upstream, title, body, base, dry_run=False):
+        raise RuntimeError("gh pr create failed: some transient error")
+    monkeypatch.setattr(F, "raise_pr_via_fork", _raise_pr)
+    ib = fake_repo / "issue.txt"; ib.write_text("bug")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=ib, dry_run=False)
+    assert r["success"] is False
+    assert r["stage"] == "pr_create"
+    assert "transient error" in r["reason"]
+    from atomic_forge.exit_audit import read_exits
+    exits = read_exits(fake_repo)
+    assert exits[-1]["reason"] == "pr_create_failed"
+
+
+def test_run_fix_repair_exhausted_runs_postmortem(monkeypatch, fake_repo):
+    """When repair genuinely exhausts its round budget, the learning engine
+    runs (best-effort) and its result is on record for later study."""
+    import atomic_forge.fix as F
+    _stub_chain(monkeypatch, oracle_fails=True, repair_success=False, green=False)
+    called = {}
+    def _pm(llm, pd, traj_path, *, bug_description, exit_reason):
+        called["hit"] = True
+        called["exit_reason"] = exit_reason
+        return {"untried_paths": ["x"], "new_tool_would_help": False}
+    monkeypatch.setattr(F, "run_postmortem", _pm)
+    ib = fake_repo / "issue.txt"; ib.write_text("bug")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=ib, dry_run=True)
+    assert r["success"] is False
+    assert called.get("hit") is True
+    assert called["exit_reason"] == "repair_exhausted"
+    from atomic_forge.exit_audit import read_exits
+    exits = read_exits(fake_repo)
+    assert exits[-1]["reason"] == "repair_exhausted"
+
+
+def test_run_fix_postmortem_failure_is_non_fatal(monkeypatch, fake_repo):
+    """A postmortem that itself blows up must not take down the outer
+    (already-failed) run's own clean result."""
+    import atomic_forge.fix as F
+    _stub_chain(monkeypatch, oracle_fails=True, repair_success=False, green=False)
+    def _pm(*a, **kw):
+        raise RuntimeError("llm exploded")
+    monkeypatch.setattr(F, "run_postmortem", _pm)
+    ib = fake_repo / "issue.txt"; ib.write_text("bug")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=ib, dry_run=True)
+    assert r["success"] is False
+    assert r["stage"] == "repair"
+
+
+def test_run_fix_success_records_exit_audit(monkeypatch, fake_repo):
+    import atomic_forge.fix as F
+    _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
+    ib = fake_repo / "issue.txt"; ib.write_text("bug")
+    F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+             project_dir=fake_repo, issue_body_file=ib, dry_run=False)
+    from atomic_forge.exit_audit import read_exits
+    exits = read_exits(fake_repo)
+    assert exits[-1]["reason"] == "success"
+
+
+def test_run_fix_no_test_generated_records_exit_audit(monkeypatch, fake_repo):
+    import atomic_forge.fix as F
+    _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
+    monkeypatch.setattr(F, "generate_regression_test",
+                        lambda llm, br, pd, tr, bug, max_turns=10: {"generated": "", "turns": 10})
+    ib = fake_repo / "issue.txt"; ib.write_text("bug")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=ib, dry_run=True)
+    assert r["success"] is False
+    from atomic_forge.exit_audit import read_exits
+    exits = read_exits(fake_repo)
+    assert exits[-1]["reason"] == "no_test_generated"
+
+
+def test_run_fix_test_not_reproducing_records_exit_audit(monkeypatch, fake_repo):
+    import atomic_forge.fix as F
+    _stub_chain(monkeypatch, oracle_fails=False, repair_success=True, green=False)
+    ib = fake_repo / "issue.txt"; ib.write_text("bug")
+    F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+             project_dir=fake_repo, issue_body_file=ib, dry_run=True)
+    from atomic_forge.exit_audit import read_exits
+    exits = read_exits(fake_repo)
+    assert exits[-1]["reason"] == "test_not_reproducing"

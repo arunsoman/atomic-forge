@@ -88,19 +88,35 @@ class _PythonStack:
         if not self.detect(root):
             return None
         reqs = self._requirements_files(root)
-        if not reqs:
-            return "python -m pytest -q --continue-on-collection-errors"
-        # Isolated per-project venv, installed from the project's own
-        # requirements — a bare `python -m pytest` would run against
-        # whatever happens to be on this process's own PATH, which
-        # silently skips every one of the project's own declared deps.
         venv_python = ".forge_venv/bin/python"
         venv_pip = ".forge_venv/bin/pip"
-        req_flags = " ".join(f"-r {r.relative_to(root)}" for r in reqs)
+        if reqs:
+            # Isolated per-project venv, installed from the project's own
+            # requirements — a bare `python -m pytest` would run against
+            # whatever happens to be on this process's own PATH, which
+            # silently skips every one of the project's own declared deps.
+            req_flags = " ".join(f"-r {r.relative_to(root)}" for r in reqs)
+            install = f"{venv_pip} install -q {req_flags} pytest pytest-asyncio"
+        elif (root / "pyproject.toml").exists() or (root / "backend" / "pyproject.toml").exists():
+            # No requirements.txt: pyproject.toml (poetry/hatch/setuptools)
+            # is the only declared dependency source. A bare `python -m
+            # pytest` here used to bootstrap_fail on both halves of this:
+            # the project itself never gets installed (ModuleNotFoundError
+            # in conftest — confirmed on python-poetry/cleo), and a plugin
+            # wired into `addopts` (e.g. `--cov=...`) is missing (pytest's
+            # own "unrecognized arguments" usage error — confirmed on
+            # benoitc/gunicorn). Both showed up identically as an opaque
+            # "test command exited 4" at the bootstrap gate. Installing the
+            # project editable + a curated set of the pytest plugins most
+            # commonly wired into addopts covers both.
+            pyroot = "." if (root / "pyproject.toml").exists() else "backend"
+            install = (f"{venv_pip} install -q -e {pyroot} pytest pytest-asyncio "
+                       f"pytest-cov pytest-xdist pytest-mock pytest-timeout")
+        else:
+            return "python -m pytest -q --continue-on-collection-errors"
         setup = (
             f"test -x {venv_python} || "
-            f"(python -m venv .forge_venv && {venv_pip} install -q --upgrade pip && "
-            f"{venv_pip} install -q {req_flags} pytest pytest-asyncio)"
+            f"(python -m venv .forge_venv && {venv_pip} install -q --upgrade pip && {install})"
         )
         return f"{setup} && {venv_python} -m pytest -q --continue-on-collection-errors"
 

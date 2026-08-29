@@ -34,8 +34,10 @@ from typing import Optional
 
 from .agent import render_tool_manifest
 from .cie_backend import MCPBridge, MCPToolBackend, cie_index, require_cie
+from .exit_audit import record_exit
 from .issue import (clone_repo, fetch_issue, issue_to_bug_description,
                     make_test_cmd, parse_issue_url, setup_python_env, upstream_slug)
+from .learning import run_postmortem
 from .llm import OpenAICompatLLM
 from .pr import default_branch_for, forge_footer, prepare_pr_branch, raise_pr_via_fork
 from .repair_agent import repair_loop_agentic
@@ -252,6 +254,8 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
             project_dir, timeout=bootstrap_timeout, llm=llm, allow_agentic=True)
         if not _gate["ok"]:
             print(f"[forge fix] abort at bootstrap gate: {_gate['verdict']} — {_gate['detail']}")
+            record_exit(project_dir, reason="bootstrap_fail", detail=_gate["detail"],
+                       extra={"issue": url, "verdict": _gate["verdict"]})
             return {"url": url, "upstream": upstream, "branch": pr_branch or pr_branch_default,
                     "test_file": f"tests/test_forge_{test_id}.py", "success": False,
                     "stage": "bootstrap", "bootstrap": _gate["verdict"],
@@ -268,31 +272,58 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
     prepare_pr_branch(project_dir, branch)
     print(f"[forge fix] on branch {branch}")
 
-    # 4. CIE index + MCP server
-    db = project_dir / ".cie" / "graph.db"
-    print(f"[forge fix] indexing code graph with CIE ...")
-    cie_index(project_dir, db)
-    bridge = MCPBridge(project_dir, db)
-    backend = MCPToolBackend(bridge, project_dir)
-    manifest = backend.describe()["results"]
-    manifest_text = render_tool_manifest(manifest)
-
-    traj = Trajectory(project_dir)
     test_rel = f"tests/test_forge_{test_id}.py"
-    (project_dir / "tests").mkdir(exist_ok=True)
-
     result = {"url": url, "upstream": upstream, "branch": branch,
               "test_file": test_rel, "success": False,
               "bootstrap": _gate["verdict"] if _gate else "skipped",
               "checkpoint_run_id": _gate["checkpoint_run_id"] if _gate else None,
               **result_extra}
+
+    # 4. CIE index + MCP server. CIE is the ONLY code-understanding backend
+    # forge's testgen/repair agents use — there is no silent degraded mode
+    # at this layer (unlike CIE's own internal graph-query-vs-heuristic-index
+    # fallback, which lives in the `cie` package itself and is out of forge's
+    # control). If indexing, the MCP bridge, or the tool manifest can't be
+    # stood up at all, fail fast here with a clear reason instead of letting
+    # testgen/repair spend rounds against a broken or absent backend, or
+    # crash later with a raw traceback the way an unhandled exception here
+    # used to (this whole block was previously outside any try/except).
+    db = project_dir / ".cie" / "graph.db"
+    print(f"[forge fix] indexing code graph with CIE ...")
+    bridge = None
     try:
-        # 5. CIE generates a regression test that reproduces the bug
+        cie_index(project_dir, db)
+        bridge = MCPBridge(project_dir, db)
+        backend = MCPToolBackend(bridge, project_dir)
+        manifest = backend.describe()["results"]
+    except Exception as e:
+        if bridge is not None:
+            bridge.stop()  # bridge came up but describe()/manifest failed after — don't leak its thread
+        record_exit(project_dir, reason="cie_unavailable", detail=str(e)[:500],
+                   extra={"issue": url})
+        result.update(stage="cie_setup", reason=f"CIE unavailable: {e}")
+        print(f"[forge fix] abort: CIE unavailable as the MCP backend ({e}); no PR raised.")
+        return result
+    manifest_text = render_tool_manifest(manifest)
+
+    traj = Trajectory(project_dir)
+    (project_dir / "tests").mkdir(exist_ok=True)
+
+    try:
+        # 5. CIE generates a regression test that reproduces the bug — fed
+        # the FULL bug description, comments included (see
+        # issue_to_bug_description): a thin original report plus a
+        # maintainer's repro steps in a follow-up comment is common, and
+        # testgen used to only ever see the original report.
         print(f"[forge fix] CIE generating regression test at {test_rel} ...")
         gen = generate_regression_test(llm, bridge, project_dir, test_rel, bug, max_turns=max_turns)
         result["testgen_turns"] = gen["turns"]
         if not gen["generated"].strip():
             result.update(stage="testgen", reason="CIE produced no test file")
+            record_exit(project_dir, reason="no_test_generated",
+                       detail=f"testgen agent used its full {max_turns}-turn budget "
+                              "(comments included in the bug description) without writing a test",
+                       extra={"issue": url})
             print("[forge fix] abort: no regression test generated; no PR raised.")
             return result
         fails, out = oracle_fails_on_buggy(project_dir, test_rel, venv_py)
@@ -300,6 +331,8 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
         if not fails:
             result.update(stage="validate", reason="generated test does not reproduce the bug "
                           "(passes on buggy code or has a collection error)")
+            record_exit(project_dir, reason="test_not_reproducing",
+                       detail=out[-500:], extra={"issue": url})
             print("[forge fix] abort: the generated test does not reproduce the bug; no PR raised.")
             print(f"  pytest output tail:\n" + "\n".join(out.splitlines()[-8:]))
             return result
@@ -321,12 +354,52 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
             "repaired_files": report.get("repaired_files", []),
         }
 
+        # The repair loop's OWN initial test run just found the test green
+        # at round 0 — despite oracle_fails_on_buggy() confirming moments
+        # ago that it fails. That's a contradiction (test flakiness, or an
+        # environment difference between the two runs), not a fix: zero
+        # rounds ran, nothing was patched, nothing was committed. Proceeding
+        # from here used to silently PR an unchanged branch — `gh pr create`
+        # would fail minutes later with an opaque "No commits between X and
+        # Y", and 3 real attempts (psf/black#5214, psf/black#4420,
+        # Delgan/loguru#1502) were lost exactly this way in the round-2
+        # sweep. Fail fast here instead, with the actual reason on record.
+        if report.get("rounds") == 0:
+            result.update(stage="repair",
+                          reason="repair loop's own initial check found the test already "
+                                 "passing, contradicting the oracle check moments earlier "
+                                 "(flake or environment drift) — no patch was made")
+            record_exit(project_dir, reason="test_already_passing",
+                       detail="oracle_fails_on_buggy() said the test fails; repair_loop_agentic's "
+                              "own round-0 check said it passes",
+                       extra={"issue": url})
+            print("[forge fix] abort: repair loop found the test already passing at round 0 "
+                  "(contradicts the oracle check) — no patch made, no PR raised.")
+            return result
+
         # ground-truth re-check of the generated test (don't trust self-report)
         green = _ground_truth_green(project_dir, test_cmd)
         result["ground_truth_green"] = green
         if not green:
             result.update(stage="repair", reason="repair did not make the generated test pass")
+            record_exit(project_dir, reason="repair_exhausted",
+                       detail=f"rounds={report.get('rounds')} "
+                              f"final_failures={report.get('final_failures')}",
+                       extra={"issue": url})
             print("[forge fix] repair exhausted; the generated test still fails; no PR raised.")
+            # Post-mortem learning engine (best-effort, never fatal): study
+            # the full trajectory for what was tried, what wasn't, and
+            # whether a new MCP/CIE tool function would plausibly have
+            # changed the outcome. Written to .forge/learning.json(l) for
+            # later study — never re-enters this (already-terminal) attempt.
+            try:
+                pm = run_postmortem(llm, project_dir, traj.path, bug_description=bug,
+                                    exit_reason="repair_exhausted")
+                print(f"[forge fix] postmortem written to {project_dir / '.forge' / 'learning.json'} "
+                      f"({len(pm.get('untried_paths', []))} untried path(s) identified, "
+                      f"new_tool_would_help={pm.get('new_tool_would_help')})")
+            except Exception as e:
+                print(f"[forge fix] postmortem failed (non-fatal): {e}")
             return result
         result["success"] = True
         result["stage"] = "fixed"
@@ -334,22 +407,33 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
         # 7. fork-only PR (never push to origin)
         title = _pr_title(issue, pr_title)
         body = _pr_body(issue, result["repair"], test_rel)
-        base = pr_base or default_branch_for(upstream)
-        if dry_run:
-            r = raise_pr_via_fork(project_dir, upstream=upstream, title=title, body=body,
-                                  base=base, dry_run=True)
-            result.update(stage="dry_run", pr_url=None, dry_run=r)
-            print(f"[forge fix] dry-run: fix ready on branch {branch} (base {base}); "
-                  f"NOT pushing / NOT opening a PR.")
-        else:
-            print(f"[forge fix] bug fixed — forking {upstream} and opening a PR ...")
-            r = raise_pr_via_fork(project_dir, upstream=upstream, title=title, body=body, base=base)
-            result["pr_url"] = r.get("pr_url")
-            result["fork"] = r.get("fork")
-            print(f"[forge fix] PR opened: {r.get('pr_url')}  (fork -> {upstream}, base {base})")
+        base = pr_base or default_branch_for(upstream, project_dir=project_dir)
+        try:
+            if dry_run:
+                r = raise_pr_via_fork(project_dir, upstream=upstream, title=title, body=body,
+                                      base=base, dry_run=True)
+                result.update(stage="dry_run", pr_url=None, dry_run=r)
+                print(f"[forge fix] dry-run: fix ready on branch {branch} (base {base}); "
+                      f"NOT pushing / NOT opening a PR.")
+            else:
+                print(f"[forge fix] bug fixed — forking {upstream} and opening a PR ...")
+                r = raise_pr_via_fork(project_dir, upstream=upstream, title=title, body=body, base=base)
+                result["pr_url"] = r.get("pr_url")
+                result["fork"] = r.get("fork")
+                print(f"[forge fix] PR opened: {r.get('pr_url')}  (fork -> {upstream}, base {base})")
+        except Exception as e:
+            result.update(success=False, stage="pr_create", reason=str(e))
+            record_exit(project_dir, reason="pr_create_failed", detail=str(e)[:500],
+                       extra={"issue": url})
+            print(f"[forge fix] abort: PR creation failed after a validated fix ({e}). "
+                  f"The fix itself is real and committed on branch {branch}.")
+            return result
+        record_exit(project_dir, reason="success",
+                   detail=result.get("pr_url") or "dry_run", extra={"issue": url})
         return result
     finally:
-        bridge.stop()
+        if bridge is not None:
+            bridge.stop()
         usage = getattr(llm, "usage", None)
         if usage:
             print(f"[forge fix] {usage.summary()}")
