@@ -3,8 +3,6 @@
 **Requirement:** Scale to large, messy enterprise monorepos without
 prohibitive indexing cost.
 
-**Sourced from:** Codegen.com.
-
 **Status in atomic-forge:** Partial — `GraphToolBackend`'s precomputed
 SQLite graph is aimed at this; the unindexed `ripgrep_tool_backend.py`
 example is offered as a fallback for repos where even that build is the
@@ -40,7 +38,7 @@ parsers.
 - **Retrieval-Augmented Code Generation: A Survey with Focus on
   Repository-Level Approaches**
   ([arXiv:2510.04905](https://arxiv.org/abs/2510.04905)) — same survey as
-  [[Environment-Bootstrap]]; the scaling-relevant dimension here is its
+  [[Repo-Scale-Context]]; the scaling-relevant dimension here is its
   treatment of retrieval-substrate tradeoffs (index-once-query-many vs.
   live-search) — directly analogous to forge's `GraphToolBackend` (indexed)
   vs. the `ripgrep` reference backend (live, no index).
@@ -65,23 +63,6 @@ graph granularity (ARISE), (2) iterative/agent-driven graph search instead
 of one-shot lookup (2503.22424). Both are incremental on top of the existing
 `codegraph.py` schema rather than a rearchitecture.
 
-## What needs to be done (to beat the competition)
-
-1. **Extend `codegraph.db`'s schema to statement-level def-use edges**, per
-   ARISE (arXiv:2605.03117) — currently forge's graph is function-level
-   (`callers`/`callees`); adding intra-procedural def-use edges down to the
-   statement is the concrete, cited +4.7 pass@1-point upgrade over
-   SWE-agent-style flat navigation.
-2. **Expose iterative graph search, not one-shot lookup.** Per
-   arXiv:2503.22424, add a tool-backend method that lets the agent issue a
-   *sequence* of graph queries (follow a caller, then its caller, then
-   check `affected_by`) within a single repair attempt, rather than forge
-   computing one fixed neighborhood up front and handing it over.
-3. **Keep the `ripgrep_tool_backend.py` fallback as the escape hatch** for
-   repos where even the precomputed SQLite build is the bottleneck — the
-   statement-level graph is a bigger index, so this fallback path becomes
-   more important, not less, as R11 is pursued.
-
 ## Implementation plan
 
 **Phase 1 — schema extension (~2–3 days)**
@@ -98,5 +79,5 @@ of one-shot lookup (2503.22424). Both are incremental on top of the existing
 - Confirm `ripgrep_tool_backend.py` still functions as a documented escape hatch for repos too large to build the extended index, updating its docstring to mention the tradeoff explicitly.
 
 ## Related
-- [[Environment-Bootstrap]] — same survey, core-capability angle
-- [[Environment-Bootstrap]] — navigation UX on top of this index
+- [[Repo-Scale-Context]] — same survey, core-capability angle
+- [[Agent-Computer-Interface]] — navigation UX on top of this index

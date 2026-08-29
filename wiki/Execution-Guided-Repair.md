@@ -3,8 +3,6 @@
 **Requirement:** Actually execute the test suite before proposing a fix,
 rather than asking a model to judge correctness by inspection.
 
-**Sourced from:** Google Jules, OpenHands.
-
 **Status in atomic-forge:** **Met, and more sophisticated than scoped —
 verified against code 2026-08-29.** `repair_agent.py::repair_loop_agentic`
 does apply→test→restore per candidate, picks the smallest-diff green
@@ -14,7 +12,7 @@ auto-reverts any round that regresses, and additionally supports
 verdict, to absorb flaky tests) — a flake-tolerance mechanism beyond what
 this requirement's research review anticipated.
 
-**⚠️→✅ Correctness fix 2026-08-29 (found while validating [[Environment-Bootstrap]]):**
+**⚠️→✅ Correctness fix 2026-08-29 (found while validating [[Parallel-Execution]]):**
 this whole requirement's guarantee — "the winner is picked by actually
 running the suite" — depended on each subprocess test run actually
 reflecting the CURRENT file content, which was sometimes false: a
@@ -22,7 +20,7 @@ write→test→rewrite→test sequence (exactly what candidate selection and
 multi-round repair both do) could hit a stale pytest assertion-rewrite
 `.pyc` cache and silently evaluate the PREVIOUS content instead. Fixed in
 `sandbox.py::_purge_pycache`, called before every `run_test`/
-`run_test_with_progress` invocation. See [[Environment-Bootstrap]] for
+`run_test_with_progress` invocation. See [[Parallel-Execution]] for
 the full root-cause writeup and reproduction numbers. Worth flagging here
 specifically: this bug meant R14's core claim was, before the fix,
 occasionally *not actually true* in practice — the mechanism was right,
@@ -59,34 +57,13 @@ control-flow-level traces. Worth prototyping whether feeding richer
 execution traces into the K-sampled retry prompt (not just the verdict
 label) improves fix rate on the existing `benchmarks/` harness.
 
-## What needs to be done (to beat the competition)
-
-1. **Capture execution traces, not just pass/fail, in the verdict.** Extend
-   `checkpoint.py`'s 7-way taxonomy with a trace payload (variable state at
-   failure point, control-flow path taken) per DynaFix (arXiv:2512.24635) —
-   feasible via `pytest --tb=long` plus a local frame dump on failure, no
-   new test infra required.
-2. **Feed the trace into the next K-sample prompt, not just the verdict
-   label.** This is the actual mechanism by which DynaFix outperforms
-   coarse pass/fail — the taxonomy alone doesn't help unless the richer
-   signal reaches the next attempt.
-3. **Prototype on `benchmarks/` before rolling out.** Measure fix-rate delta
-   with trace-augmented retries vs. current traceback-only retries on the
-   existing harness — this is a benchmarkable, falsifiable change, not a
-   speculative one.
-4. **Keep this as the load-bearing gate.** Per SWE-bench's own founding
-   principle (arXiv:2310.06770) and reinforced by every other requirement
-   here that depends on grounding ([[Environment-Bootstrap]],
-   [[Environment-Bootstrap]]) — every other improvement should
-   compose with execution-based selection, never bypass it.
-
 ## Implementation plan
 
 **Phase 1 — trace capture (~2 days)**
 - Run failing tests with `pytest --tb=long` (or language-appropriate equivalent) and capture local variable state at the failure frame; store as a new field on the existing verdict object in `checkpoint.py`, alongside (not replacing) the current pass/failed/etc. label.
 
 **Phase 2 — prompt integration (~1 day)**
-- Update `repair_agent.py`'s retry-prompt construction to include the trace payload from Phase 1 for the next K-sample attempt, formatted concisely (per the ACI error-schema work in [[Environment-Bootstrap]] if that's landed by then).
+- Update `repair_agent.py`'s retry-prompt construction to include the trace payload from Phase 1 for the next K-sample attempt, formatted concisely (per the ACI error-schema work in [[Agent-Computer-Interface]] if that's landed by then).
 
 **Phase 3 — benchmark delta (~1–2 days)**
 - Run `benchmarks/` with trace-augmented retries on vs. off; only keep it on by default if fix-rate improves or attempt-count-to-fix drops, since richer prompts cost more tokens per attempt.
@@ -95,6 +72,6 @@ label) improves fix rate on the existing `benchmarks/` harness.
 - Whenever any other requirement's plan touches patch selection (R2, R10, R13), confirm in review that execution-based selection remains the final gate — trace richness and critique layers augment it, never bypass it.
 
 ## Related
-- [[Environment-Bootstrap]] — why execution-grounding beats self-judgment
-- [[Environment-Bootstrap]] — depends on this requirement being met first
-- [[Environment-Bootstrap]] — the selection step K-sampling relies on
+- [[Critic-Verification-Gate]] — why execution-grounding beats self-judgment
+- [[Self-Review-Issue-Resolution]] — depends on this requirement being met first
+- [[Parallel-Execution]] — the selection step K-sampling relies on

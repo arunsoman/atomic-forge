@@ -3,8 +3,6 @@
 **Requirement:** Auto-commit each accepted edit with a descriptive,
 attributed commit message.
 
-**Sourced from:** Aider (git integration).
-
 **Status in atomic-forge:** **Met (templated, not LLM-generated) — verified
 against code 2026-08-29.** `sandbox.py::commit()` auto-commits every
 accepted repair round with a descriptive, structured message (e.g. `"forge:
@@ -44,22 +42,6 @@ proposition:
 Low effort, low risk: this can likely be satisfied by prompting the same
 model already in the loop with the accepted diff, no architecture change
 required. Worth confirming current behavior before treating it as a gap.
-
-## What needs to be done (to beat the competition)
-
-1. **Confirm current state first.** Check whether forge already auto-commits
-   accepted patches; if git integration exists but lacks generated messages,
-   this is a small addition, not new plumbing.
-2. **Condense the diff before prompting for a message**, per
-   arXiv:2509.15567 — feed a summarized change description (files touched,
-   symbols changed, verdict) rather than the raw unified diff, which that
-   paper shows improves message quality.
-3. **Use in-context examples, no fine-tuning**, per arXiv:2502.18904 — a
-   handful of good example (diff-summary → message) pairs in the prompt is
-   sufficient; don't over-invest here relative to the repair-loop work.
-4. **Keep the `Co-authored-by` / attribution trailer** consistent with
-   forge's existing commit conventions so generated commits are
-   indistinguishable in provenance tracking from any other forge-made commit.
 
 ## Implementation plan
 

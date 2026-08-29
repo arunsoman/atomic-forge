@@ -4,8 +4,6 @@
 reasons about the change, a cheap "editor" model that executes it — to cut
 cost on multi-file work.
 
-**Sourced from:** Aider (Architect mode).
-
 **Status in atomic-forge:** Not implemented — forge currently uses one model
 per attempt (K sampled attempts), not a planner/editor role split.
 
@@ -64,26 +62,6 @@ harness (`benchmarks/`) rather than assumed from Aider's UX success — cost
 savings and quality are separable claims, and SAFEdit suggests they don't
 always move together.
 
-## What needs to be done (to beat the competition)
-
-1. **Run the SAFEdit test before building anything.** Before implementing a
-   split, replicate SAFEdit's reliability framing on forge's own
-   `benchmarks/` cases: does a planner→executor split reduce or increase
-   variance in outcome versus single-model K-sampling on the *same* tasks?
-   Ship the split only if it wins on forge's data, not Aider's UX reputation.
-2. **If it wins, implement as an opt-in mode, not a replacement.** Add a
-   `--architect` flag: a strong model emits a structured per-file intent
-   list (not prose) and the existing K-sampling executor model is
-   constrained to produce SEARCH/REPLACE hunks matching that intent —
-   keeping `patch.py`'s existing normalization/disjointness preflight as
-   the safety net either way.
-3. **Adopt GoalAct's continuously-updated plan at the run level, not just
-   per-task.** Rather than a one-shot plan per `AtomicTask`, maintain a
-   run-level plan object (per arXiv:2504.16563) that updates as tasks
-   complete, so later tasks in a run can be reprioritized/re-scoped based on
-   what earlier repairs revealed — a cheap win independent of whether the
-   per-task architect/editor split is adopted.
-
 ## Implementation plan
 
 **Phase 1 — SAFEdit-style reliability test (~2–3 days, gate for everything else)**
@@ -104,4 +82,4 @@ always move together.
 - Feed it into later tasks' prompts in the same run for reprioritization — ship this regardless of the architect-mode decision, since it doesn't depend on the per-task split working out.
 
 ## Related
-- [[Environment-Bootstrap]] — an orthogonal axis (breadth of K attempts vs. depth of plan/execute roles)
+- [[Parallel-Execution]] — an orthogonal axis (breadth of K attempts vs. depth of plan/execute roles)

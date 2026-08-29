@@ -3,8 +3,6 @@
 **Requirement:** Guarantee data privacy / no training on private code by
 default.
 
-**Sourced from:** Google Jules.
-
 **Status in atomic-forge:** Depends on the LLM endpoint used — forge is
 BYO-endpoint (OpenAI-compatible or local Ollama), so this is a property of
 the chosen backend, not forge itself.
@@ -40,20 +38,6 @@ inference via Ollama, which structurally sidesteps the question (no data
 leaves the user's infrastructure at all when run that way). Worth stating
 this explicitly in docs as the answer to "how does forge compare to Jules on
 privacy," rather than treating it as an unmet requirement.
-
-## What needs to be done (to beat the competition)
-
-1. **Make the guarantee enforceable, not just possible.** Add a
-   `--local-only` CLI flag that refuses to run if the configured endpoint
-   isn't localhost/an explicitly allow-listed private host — turns "you
-   *can* run fully local" into "the tool *verifies* you are," which no
-   competitor surveyed here offers (they all guarantee privacy by their own
-   platform policy, not by a client-side check).
-2. **Document it as the competitive answer, not a gap.** A single README
-   section: "unlike Devin/Jules/Copilot coding agent, forge never requires
-   sending code to a hosted service — point it at Ollama and nothing leaves
-   the machine" is a stronger, more verifiable claim than any competitor's
-   training-policy promise.
 
 ## Implementation plan
 

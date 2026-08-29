@@ -3,8 +3,6 @@
 **Requirement:** Accept task intake from multiple channels (chat/Slack,
 issue tracker, direct UI).
 
-**Sourced from:** Cognition Devin.
-
 **Status in atomic-forge:** Partial, verified 2026-08-29 — `atomic-forge fix
 <issue-url>` covers GitHub issue intake, and `--issue-body-file` already
 lets a caller supply the bug text directly instead of fetching via `gh`
@@ -28,8 +26,8 @@ doc's own guidance.
 No dedicated research literature — this is a distribution/product-surface
 decision (which platforms to integrate with), not an open research problem.
 The interesting research (turning an issue description into a task
-specification) is already covered by [[Environment-Bootstrap]] and
-[[Environment-Bootstrap]]; the "which inbox does it arrive from" question
+specification) is already covered by [[Execution-Guided-Repair]] and
+[[Repo-Scale-Context]]; the "which inbox does it arrive from" question
 sits entirely in integration/engineering work.
 
 ## Implication for atomic-forge
@@ -38,21 +36,6 @@ Low priority relative to the other requirements — worth doing only if there's
 demonstrated user demand for non-GitHub-issue intake (Slack, CLI-direct
 task description, etc.), since it adds no new capability to the repair loop
 itself, only a new entry point into the existing `fix` command.
-
-## What needs to be done (to beat the competition)
-
-1. **Factor `fix`'s issue-parsing out from its GitHub-fetch step.** Split
-   "turn free text into an `AtomicTask`" from "fetch an issue body from a
-   URL" so any new channel just needs to supply text, reusing the existing
-   parser.
-2. **Add intake adapters incrementally, cheapest first**: a `--text` /
-   stdin flag (near-zero cost, unblocks CLI-direct and any future
-   integration), then a webhook receiver (Slack/generic), each as a thin
-   wrapper producing the same `AtomicTask` input the `fix` command already
-   consumes.
-3. **Don't build a new UI.** Every competitor with multi-channel intake
-   (Devin) still routes to the same underlying task representation —
-   match that pattern instead of growing a bespoke inbox.
 
 ## Implementation plan
 

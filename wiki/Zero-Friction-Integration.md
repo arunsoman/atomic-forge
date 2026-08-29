@@ -4,8 +4,6 @@
 entirely inside the host platform (GitHub Actions, PR comments) rather than
 a separate product.
 
-**Sourced from:** GitHub Copilot coding agent, Sweep.dev.
-
 **Status in atomic-forge:** Partial, verified 2026-08-29 — ships as a
 GitHub Action (`action.yml`, Docker-based, thin wrapper over the CLI per
 `entrypoint.sh`) and a `fix` CLI subcommand producing a fork-only PR. Gap
@@ -58,23 +56,12 @@ the original competitive scan.
 Already substantially met via `action.yml` + the `fix` CLI. The remaining
 gap (in-PR-comment triggering, e.g. `@atomic-forge fix this`) is a small,
 well-scoped engineering task, not a research gap — pairs naturally with
-[[Environment-Bootstrap]] if that requirement is pursued, since both
+[[Review-Comment-Driven-Fix]] if that requirement is pursued, since both
 need the same "listen for a GitHub comment, dispatch a fix run" plumbing.
-
-## What needs to be done (to beat the competition)
-
-1. **Add an `issue_comment`/`pull_request_review_comment` trigger to
-   `action.yml`** alongside the existing entry points, gated on a mention
-   pattern (e.g. `@atomic-forge fix`), dispatching to the same `fix` CLI
-   path — this single change closes both R8 and R9's remaining gap at once.
-2. **No new product surface.** Resist building a dashboard/web UI to compete
-   on "polish" — Copilot and Sweep's edge here is specifically *not*
-   requiring a new surface; matching that means staying inside GitHub
-   Actions + PR comments, not adding one.
 
 ## Implementation plan
 
-**Phase 1 — Action trigger (~1 day, shared with [[Environment-Bootstrap]])**
+**Phase 1 — Action trigger (~1 day, shared with [[Review-Comment-Driven-Fix]])**
 - Add the `issue_comment` / `pull_request_review_comment` event trigger and mention-pattern gate to `action.yml`.
 
 **Phase 2 — dispatch wiring (~0.5 day)**

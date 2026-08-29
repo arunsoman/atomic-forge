@@ -4,8 +4,6 @@
 navigate/view/edit/execute commands) instead of raw shell access, so the LM's
 actions are constrained and parseable.
 
-**Sourced from:** SWE-agent (Princeton/Stanford) — Agent-Computer Interface (ACI).
-
 **Status in atomic-forge:** **Met — verified against code 2026-08-29.**
 `tools.py`'s own docstring literally calls it "forge's agent-computer
 interface": `view_file` is already windowed (~100 lines/call, explicit
@@ -51,29 +49,6 @@ are complementary, not redundant — an ACI-style edit-time lint pass would
 sit upstream of `patch.py`, catching a class of errors before they ever
 reach the normalization/disjointness preflight.
 
-## What needs to be done (to beat the competition)
-
-1. **Windowed file viewer.** Add a `view_window(file, center_line, radius)`
-   method to `ToolBackend` that returns a bounded slice (matching
-   SWE-agent's ACI design), not the whole file. Wire `repair_agent.py` to
-   request windows around suspect lines (from traceback/blast-radius
-   evidence it already computes) instead of loading full files into the
-   prompt.
-2. **Lint-on-edit, before the patch is even scored.** Run the repo's linter
-   immediately after `patch.py` applies a hunk, *before* the test suite
-   runs. Feed lint errors back in the same structured format as test
-   failures so a bad edit is caught and retried within the same K-attempt
-   budget, not discovered downstream.
-3. **Standardized, concise error format.** Replace raw pytest/traceback dumps
-   fed to the model with a fixed schema (file, line, symbol, one-line cause)
-   — SWE-agent's paper attributes real gains to this alone, independent of
-   model quality. This slots into the same place `checkpoint.py`'s verdict
-   taxonomy already captures failures.
-4. **Benchmark it.** Add an ACI on/off toggle to `benchmarks/` and measure
-   fix-rate delta on the existing suite before claiming the win — SWE-agent's
-   own gains were empirically validated, not assumed from the interface
-   design.
-
 ## Implementation plan
 
 **Phase 1 — windowed viewer (spike, ~1–2 days)**
@@ -96,5 +71,5 @@ reach the normalization/disjointness preflight.
 - Document the result (even if negative) in this file's Status line.
 
 ## Related
-- [[Environment-Bootstrap]] — the retrieval/navigation half of the same problem
-- [[Environment-Bootstrap]] — ACI navigation at larger scale
+- [[Repo-Scale-Context]] — the retrieval/navigation half of the same problem
+- [[Enterprise-Scale-Indexing]] — ACI navigation at larger scale

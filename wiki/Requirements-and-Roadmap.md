@@ -6,26 +6,26 @@ Google Jules (2026). Each competitor's headline feature is restated as a
 requirement (R1–R15) below. Full detail — status against the actual
 atomic-forge codebase, and the state-of-the-art research literature backing
 each one — now lives in its own document under
-own page per requirement below per requirement below.
+[[Agent-Computer-Interface|own page]] per requirement below.
 
-| # | Requirement | Sourced from | Status | Doc |
-|---|---|---|---|---|
-| R1 | Purpose-built agent-computer interface (structured navigate/view/edit/execute) instead of raw shell | SWE-agent | ✅ Done | [[Agent-Computer-Interface]] |
-| R2 | Independent critic/gate that can withhold a low-confidence patch | OpenHands | ✅ Already met | [[Critic-Verification-Gate]] |
-| R3 | Planner (strong model) / executor (cheap model) role split | Aider | ✅ Done (opt-in, default off) | [[Planner-Executor-Split]] |
-| R4 | Whole-codebase symbol map for structural awareness | Aider | ✅ Already met | [[Repo-Scale-Context]] |
-| R5 | Auto-commit each accepted edit with a descriptive message | Aider | ✅ Already met | [[Auto-Commit-Messages]] |
-| R6 | Persistent sandbox with terminal, editor, and browser | Devin | Not a goal (by design) | [[Persistent-Sandbox]] |
-| R7 | Multi-channel task intake (chat, issue tracker, UI) | Devin | ✅ Done (stdin path) | [[Multi-Channel-Intake]] |
-| R8 | Fix PR generated directly from a review comment | GitHub Copilot coding agent | ✅ Done | [[Review-Comment-Driven-Fix]] |
-| R9 | Zero new developer tooling — operate inside the host platform | GitHub Copilot coding agent, Sweep.dev | ✅ Done | [[Zero-Friction-Integration]] |
-| R10 | Self-review that the patch resolves the stated issue | Sweep.dev | ✅ Already met (fix pipeline) | [[Self-Review-Issue-Resolution]] |
-| R11 | Scale to large/enterprise monorepos without prohibitive indexing cost | Codegen.com | Statement-level graph shipped 2026-08-29 | [[Enterprise-Scale-Indexing]] |
-| R12 | Terminal-native CLI fitting into existing CI/CD | Factory.ai (Droid) | ✅ Already met | [[CLI-CI-Native]] |
-| R13 | Fully async, per-task isolated, parallel execution | Google Jules | ✅ Done (within-task); cross-task still open | [[Parallel-Execution]] |
-| R14 | Execute the test suite to select a patch, not model judgment | Google Jules, OpenHands | ✅ Already met (+ correctness fix) | [[Execution-Guided-Repair]] |
-| R15 | No training on private code by default | Google Jules | ✅ Done (`--local-only`) | [[Data-Privacy-No-Training]] |
-| R16 | Bootstrap *any* GitHub repo (language/build-agnostic) to a runnable state before repair begins | — (category-wide gap, not one competitor) | Deterministic gate + checkpoint + C/C++ shipped; agentic fallback open | [[Environment-Bootstrap]] |
+| # | Requirement | Status | Doc |
+|---|---|---|---|
+| R1 | Purpose-built agent-computer interface (structured navigate/view/edit/execute) instead of raw shell | ✅ Done | [[Agent-Computer-Interface]] |
+| R2 | Independent critic/gate that can withhold a low-confidence patch | ✅ Already met | [[Critic-Verification-Gate]] |
+| R3 | Planner (strong model) / executor (cheap model) role split | ✅ Done (opt-in, default off) | [[Planner-Executor-Split]] |
+| R4 | Whole-codebase symbol map for structural awareness | ✅ Already met | [[Repo-Scale-Context]] |
+| R5 | Auto-commit each accepted edit with a descriptive message | ✅ Already met | [[Auto-Commit-Messages]] |
+| R6 | Persistent sandbox with terminal, editor, and browser | Not a goal (by design) | [[Persistent-Sandbox]] |
+| R7 | Multi-channel task intake (chat, issue tracker, UI) | ✅ Done (stdin path) | [[Multi-Channel-Intake]] |
+| R8 | Fix PR generated directly from a review comment | ✅ Done | [[Review-Comment-Driven-Fix]] |
+| R9 | Zero new developer tooling — operate inside the host platform | ✅ Done | [[Zero-Friction-Integration]] |
+| R10 | Self-review that the patch resolves the stated issue | ✅ Already met (fix pipeline) | [[Self-Review-Issue-Resolution]] |
+| R11 | Scale to large/enterprise monorepos without prohibitive indexing cost | Statement-level graph shipped 2026-08-29 | [[Enterprise-Scale-Indexing]] |
+| R12 | Terminal-native CLI fitting into existing CI/CD | ✅ Already met | [[CLI-CI-Native]] |
+| R13 | Fully async, per-task isolated, parallel execution | ✅ Done (within-task); cross-task still open | [[Parallel-Execution]] |
+| R14 | Execute the test suite to select a patch, not model judgment | ✅ Already met (+ correctness fix) | [[Execution-Guided-Repair]] |
+| R15 | No training on private code by default | ✅ Done (`--local-only`) | [[Data-Privacy-No-Training]] |
+| R16 | Bootstrap *any* GitHub repo (language/build-agnostic) to a runnable state before repair begins | Deterministic gate + checkpoint + C/C++ shipped; agentic fallback open | [[Environment-Bootstrap]] |
 
 ## atomic-forge's own claimed differentiators (for reference, not sourced from competitors)
 
@@ -84,7 +84,7 @@ multi-round repair both do — could intermittently evaluate a STALE cached
 `.pyc` instead of the just-written fix, silently corrupting the
 execution-based candidate selection R14 depends on being trustworthy.
 Root-caused and fixed in `sandbox.py::_purge_pycache`; see
-[[Environment-Bootstrap]] and [[Environment-Bootstrap]] for the
+[[Parallel-Execution]] and [[Execution-Guided-Repair]] for the
 full writeup. Verified 15/15 clean (was ~50% flaky) after the fix.
 
 **What's left, honestly, not silently deferred:**

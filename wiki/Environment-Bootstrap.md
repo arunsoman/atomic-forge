@@ -6,12 +6,6 @@ framework — by first getting the repo into a runnable state (dependencies
 installed, at least one test discoverable and executable) before any repair
 logic runs.
 
-**Sourced from:** No single competitor — this is the prerequisite the whole
-"issue → PR" category depends on and mostly gets for free by scoping demos
-to well-behaved repos. It surfaced from asking directly: what would it take
-for forge's `fix` command to genuinely work on *any* URL, not just the
-Python repos it's been validated against.
-
 **Status in atomic-forge:** **Shipped 2026-08-29 (deterministic + checkpoint
 phases); agentic fallback open (R16c).**
 - **Deterministic detection:** six registered stacks — Python (venv per
@@ -65,7 +59,7 @@ phases); agentic fallback open (R16c).**
   Evaluating Agentless, SWE-agent, and OpenHands shows resolve rates on
   non-Python languages are markedly worse than Python SWE-bench numbers —
   current agentic techniques, including SWE-agent's ACI
-  ([[Environment-Bootstrap]]), don't transfer cleanly across
+  ([[Agent-Computer-Interface]]), don't transfer cleanly across
   languages.
 - **SWE-PolyBench** ([arXiv:2504.08703](https://arxiv.org/abs/2504.08703))
   and **SWE-bench Multilingual** ([swebench.com/multilingual](https://www.swebench.com/multilingual.html))
@@ -101,35 +95,6 @@ phases); agentic fallback open (R16c).**
   detects failures, and **rolls back to the last known-good state** on any
   failed step (atomic configuration synthesis). Result: **86.0% build
   success across 361 repos — 63.9 points above the next-best method.**
-
-## What needs to be done (to beat the competition)
-
-1. **Treat environment bootstrap as its own pipeline stage, before
-   `AtomicTask` generation.** No competitor surveyed in R1–R15 foregrounds
-   this as a distinct capability — most demo on repos chosen because they
-   already work. Making "any URL" actually reliable, backed by the EnvBench/
-   SetupBench numbers showing everyone else fails most of the time, is a
-   genuine differentiator, not a parity feature.
-2. **Cheap deterministic detection first.** Marker-file based language/
-   build-system detection (`pyproject.toml`/`requirements.txt` → Python,
-   `package.json` → Node, `pom.xml`/`build.gradle` → JVM, `Cargo.toml` →
-   Rust, `go.mod` → Go) with a canonical install/build/test command per
-   ecosystem, tried before any LLM call — this alone likely resolves the
-   well-behaved majority of repos at near-zero cost.
-3. **Fall back to a Repo2Run-style agent only when deterministic detection
-   fails.** Internal Docker sandbox + external configurator + rollback on
-   failed command, per arXiv:2502.13681 — reserve the expensive path for the
-   genuinely hard cases (conflicting dependency versions, undocumented setup
-   steps, custom build tooling).
-4. **Gate the rest of `fix` behind one explicit checkpoint**: "at least one
-   test in this repo is discoverable and executable." Nothing downstream
-   (`LocalToolBackend`, `GraphToolBackend`, `repair_agent.py`) should run
-   against a repo that hasn't cleared this checkpoint — surfacing a clear
-   "could not bootstrap this repo" verdict is strictly better than a
-   confusing downstream failure.
-5. **Track bootstrap success as its own metric in `benchmarks/`**, separate
-   from repair fix-rate — per SETUPAGENT's finding, conflating the two masks
-   which one is actually failing on a given repo.
 
 ## Implementation plan
 
@@ -167,12 +132,11 @@ this whole requirements set)**
   least Python, Node, JVM, and Go, deliberately including some *not*
   pre-verified to build cleanly — mirroring SETUPAGENT's un-curated
   methodology rather than reusing only known-good cases.
-- Report bootstrap success rate and repair fix-rate as separate numbers, per
-  the "what needs to be done" item above.
+- Report bootstrap success rate and repair fix-rate as separate numbers,
 
 ## Related
-- [[Environment-Bootstrap]], [[Environment-Bootstrap]] — both
+- [[Repo-Scale-Context]], [[Enterprise-Scale-Indexing]] — both
   presuppose the working checkout this requirement produces
-- [[Environment-Bootstrap]] — the cross-language transfer gap
+- [[Agent-Computer-Interface]] — the cross-language transfer gap
   documented in Multi-SWE-bench applies to ACI design too
-- [[Environment-Bootstrap]] — the `fix` CLI entrypoint this stage sits in front of
+- [[CLI-CI-Native]] — the `fix` CLI entrypoint this stage sits in front of

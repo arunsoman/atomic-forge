@@ -4,8 +4,6 @@
 environment, so many tasks can run in parallel and be reviewed only when
 ready.
 
-**Sourced from:** Google Jules.
-
 **Status in atomic-forge:** Partial — `concurrency.py`'s adaptive worker
 pool parallelizes LLM calls *within* a run (used by `generate_batch_agentic`);
 there's no per-task isolated-VM model for running many independent tasks
@@ -85,30 +83,10 @@ Forge's within-task K-sampling is already state-of-the-art in spirit
 cross-task isolation/parallelism (many independent `AtomicTask`s running in
 separate sandboxes at once) — 2606.00953's cohesion-awareness finding
 suggests this shouldn't be naive fan-out; tasks sharing call-graph neighbors
-(see [[Environment-Bootstrap]]) are exactly the ones blast-radius
+(see [[Enterprise-Scale-Indexing]]) are exactly the ones blast-radius
 gating exists to protect, and running them concurrently without coordination
 risks the same class of cross-task collision the gate currently catches
 within a single task.
-
-## What needs to be done (to beat the competition)
-
-1. **Add a task-level scheduling tier above `concurrency.py`'s worker pool.**
-   Today the pool parallelizes LLM *calls*; add a layer that groups
-   `AtomicTask`s by call-graph cohesion (using `codegraph.py`'s existing
-   `affected_by` edges) before dispatch.
-2. **Run cohesive groups serially, independent groups in parallel**, per
-   arXiv:2606.00953's finding that naive fan-out hurts when subtasks share
-   dependencies — tasks touching the same callers are exactly the ones the
-   blast-radius gate exists to protect from cross-task collision, so they
-   should never run concurrently against the same working tree.
-3. **Match Trae Agent's validated pattern for within-task sampling** — keep
-   K-sampling + execution-based selection as is (arXiv:2507.23370 confirms
-   it's already state-of-the-art), and spend new engineering effort on the
-   cross-task tier above, not on re-deriving within-task selection.
-4. **Consider a hybrid judge+execution selector** per the SWE-Bench
-   leaderboard analysis (arXiv:2506.17208) as a follow-up experiment once
-   cross-task parallelism exists — only after confirming it beats
-   execution-only selection on `benchmarks/`.
 
 ## Implementation plan
 
@@ -126,5 +104,5 @@ within a single task.
 - Once Phases 1–3 are stable, prototype an LLM-as-judge pre-filter ahead of execution-based selection (per arXiv:2506.17208) and benchmark it against execution-only selection before adopting.
 
 ## Related
-- [[Environment-Bootstrap]] — orthogonal axis: breadth (K/parallel tasks) vs. depth (plan/execute roles)
-- [[Environment-Bootstrap]] — the selection mechanism K-sampling depends on
+- [[Planner-Executor-Split]] — orthogonal axis: breadth (K/parallel tasks) vs. depth (plan/execute roles)
+- [[Execution-Guided-Repair]] — the selection mechanism K-sampling depends on

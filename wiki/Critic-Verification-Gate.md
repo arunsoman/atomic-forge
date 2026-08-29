@@ -4,8 +4,6 @@
 agent's own patch and can withhold/iterate instead of shipping a
 low-confidence result.
 
-**Sourced from:** OpenHands (critic model).
-
 **Status in atomic-forge:** **Met — verified against code 2026-08-29.**
 `repair_agent.py::_blast_radius_violations` is exactly the static gate
 described below, AND `pending_violations` is already fed verbatim into the
@@ -39,32 +37,8 @@ gate over a learned critic model: the 2406.01297 survey documents exactly
 the failure mode (self-critique without external grounding) that a
 deterministic, execution/analysis-derived signal sidesteps. OpenHands'
 critic model is not obviously an upgrade — it's a different, less-grounded
-bet. See [[Environment-Bootstrap]] for the closely related evidence
+bet. See [[Execution-Guided-Repair]] for the closely related evidence
 that execution-based grounding is what actually earns correctness gains.
-
-## What needs to be done (to beat the competition)
-
-1. **Do not replace the static gate with a learned critic — extend it.**
-   Per 2406.01297, an ungrounded critic is a step backward. Instead, add
-   more *deterministic* checks alongside blast-radius: exported-API diff,
-   type-signature diff, and (per CRITIC, 2305.11738) tool-grounded checks
-   like "does the patched function still satisfy its own docstring/type
-   hints" via a static analyzer, not a model's opinion.
-2. **Error-type-aware retry budget.** Per 2604.10508, name errors are fixed
-   reliably in 1-2 attempts while assertion/logic errors need more. Extend
-   `checkpoint.py`'s verdict taxonomy to classify *why* a patch failed
-   (name/type error vs. assertion/logic error) and let `repair_agent.py`
-   allocate more of the K budget to logic-class failures instead of spending
-   it uniformly.
-3. **Feed the gate's rejection reason back into the next attempt.** The
-   grounding signal that makes self-repair work (per the self-correction
-   survey) is a *specific, external* error location — when blast-radius
-   rejects a patch, pass the exact caller/signature conflict it found into
-   the next K-sample prompt, not just "patch rejected, try again."
-4. **Benchmark against a critic-model baseline once, then stop revisiting
-   it.** Worth one controlled comparison run (static gate vs. OpenHands-style
-   critic) on `benchmarks/` to have the number, not just the literature
-   argument, on hand.
 
 ## Implementation plan
 
@@ -85,5 +59,5 @@ that execution-based grounding is what actually earns correctness gains.
 - Run both configurations (static gate alone vs. static gate + critic) on `benchmarks/`; record the delta in this file and stop maintaining the critic path unless it wins clearly.
 
 ## Related
-- [[Environment-Bootstrap]] — why execution >> self-judgment as a gate
-- [[Environment-Bootstrap]] — self-review's dependency on this same grounding problem
+- [[Execution-Guided-Repair]] — why execution >> self-judgment as a gate
+- [[Self-Review-Issue-Resolution]] — self-review's dependency on this same grounding problem

@@ -3,8 +3,6 @@
 **Requirement:** Maintain a whole-codebase symbol map (e.g. tree-sitter-derived)
 so the model has structural awareness without loading every file into context.
 
-**Sourced from:** Aider (repo-map).
-
 **Status in atomic-forge:** **Met — verified against code 2026-08-29.**
 `codegraph.py`'s `CodeGraph` persists a SQLite call graph
 (`.forge/codegraph.db`) with precomputed, indexed `edges` table; `build()`
@@ -33,28 +31,9 @@ protocol as `LocalToolBackend`.
 
 This requirement is already substantively met; the research gap is less
 "should forge have a graph" (yes, it does) and more granularity and use —
-see [[Environment-Bootstrap]] for the statement-level granularity
+see [[Enterprise-Scale-Indexing]] for the statement-level granularity
 upgrade path (ARISE) that's the natural next step past forge's current
 function-level call graph.
-
-## What needs to be done (to beat the competition)
-
-1. **Add a retrieval-optimization/ranking layer on top of `codegraph.py`.**
-   Currently `callers`/`callees`/`affected_by` return full edge sets; per
-   the survey's context-construction → retrieval-optimization split, add
-   relevance ranking (proximity to the failing test, recency of edit,
-   symbol overlap with the issue text) so the model sees the highest-signal
-   neighbors first, not every edge.
-2. **Close the retrieval loop with execution feedback.** Per the survey's
-   "environment interaction" stage — which forge doesn't yet have — re-query
-   `codegraph.db` using the *failing test's* traceback frames after a rejected
-   attempt, rather than only querying it once up front from the issue text.
-3. **Validate against 2505.14394's claim directly.** That paper shows graph
-   beats flat embeddings for cross-file coherence — forge already made this
-   bet; worth confirming it still holds by A/B-testing `GraphToolBackend` vs.
-   the unindexed `ripgrep_tool_backend.py` reference on multi-file
-   `benchmarks/` cases specifically (not just single-file ones, where the
-   difference should be largest).
 
 ## Implementation plan
 
@@ -71,5 +50,5 @@ function-level call graph.
 - Record results in this file; if Phase 1/2 don't move the needle on forge's own cases, say so plainly rather than keeping unused ranking code.
 
 ## Related
-- [[Environment-Bootstrap]] — same survey, scaling angle
-- [[Environment-Bootstrap]] — the navigation/edit half of the same problem
+- [[Enterprise-Scale-Indexing]] — same survey, scaling angle
+- [[Agent-Computer-Interface]] — the navigation/edit half of the same problem

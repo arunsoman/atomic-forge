@@ -3,8 +3,6 @@
 **Requirement:** Self-review before opening a PR — verify the change
 actually resolves the stated issue, not just that tests pass.
 
-**Sourced from:** Sweep.dev.
-
 **Status in atomic-forge:** **Met for the `fix` pipeline — verified against
 code 2026-08-29.** `testgen.py::oracle_fails_on_buggy` confirms the
 generated regression test actually reproduces the reported bug (fails on
@@ -23,7 +21,7 @@ lower-priority than originally scoped.
   self-explanation improves correctness on suites *with* executable tests by
   up to 12 points, but shows near-zero gain without them. This is the key
   finding for this requirement: self-review only earns its keep when it's
-  grounded in actual execution, which makes [[Environment-Bootstrap]]
+  grounded in actual execution, which makes [[Execution-Guided-Repair]]
   a prerequisite for this requirement rather than a parallel, independent
   feature.
 - **Revisit Self-Debugging with Self-Generated Tests**
@@ -43,25 +41,6 @@ this resolve the issue" semantic check, it should be layered on top of the
 existing execution-based gate (per 2304.05128's finding), not as a
 standalone LLM judgment call.
 
-## What needs to be done (to beat the competition)
-
-1. **Build the semantic check as a deterministic mapping, not an LLM
-   opinion.** Per 2304.05128's finding that self-review only helps when
-   grounded in execution: require that the `test_triad`'s positive test
-   actually exercises the symptom described in the issue (e.g. the same
-   function/traceback frame named in the issue text appears in the
-   passing test's coverage) before marking a verdict "resolved" — a static
-   check, not a second model call asking "does this look right?"
-2. **Never let the model invent the verification test.** Per 2501.12793's
-   finding that self-generated tests are unreliable oracles, this is
-   already forge's structural advantage (`test_triad` is required upfront,
-   not generated post-hoc at repair time) — the action item is to *keep* it
-   that way rather than adding an LLM-judged "does this resolve it" step
-   that reintroduces the same unreliable-oracle risk from a different angle.
-3. **Layer, don't replace.** Any semantic check goes on top of the existing
-   execution-based gate (per [[Environment-Bootstrap]]), never as a
-   substitute for actually running the suite.
-
 ## Implementation plan
 
 **Phase 1 — symptom-to-test mapping check (~2–3 days)**
@@ -75,5 +54,5 @@ standalone LLM judgment call.
 - Once Phase 2's data shows the check reliably agrees with human judgment on a sample of `benchmarks/` cases, allow `unmappable`-but-suspicious results to trigger one extra repair attempt rather than shipping immediately.
 
 ## Related
-- [[Environment-Bootstrap]] — same underlying grounding problem
-- [[Environment-Bootstrap]] — the execution grounding this requirement depends on
+- [[Critic-Verification-Gate]] — same underlying grounding problem
+- [[Execution-Guided-Repair]] — the execution grounding this requirement depends on

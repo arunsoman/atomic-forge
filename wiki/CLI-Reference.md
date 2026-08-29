@@ -23,8 +23,8 @@
 | `--backend local\|graph` | all (tool backend) | `local` = in-memory symbol index; `graph` = persisted SQLite call graph at `.forge/codegraph.db` |
 | `--max-rounds` | repair/fix | Repair rounds (default: 3 for repair, 5 for fix) |
 | `--samples` | repair/fix | Patch candidates K per round (default 2) |
-| `--architect` | repair/fix | Opt-in planner pass before each round's K-sampling (one extra LLM call; default off — see [[Environment-Bootstrap]]) |
-| `--local-only` | all | Refuse non-loopback LLM endpoints ([[Environment-Bootstrap]]) |
+| `--architect` | repair/fix | Opt-in planner pass before each round's K-sampling (one extra LLM call; default off — see [[Planner-Executor-Split]]) |
+| `--local-only` | all | Refuse non-loopback LLM endpoints ([[Data-Privacy-No-Training]]) |
 | `--report jsonl` | run | Write artifacts/status/repair events to `.forge/reports.jsonl` |
 | `--timeout` | run | Per-phase seconds (default 300) |
 

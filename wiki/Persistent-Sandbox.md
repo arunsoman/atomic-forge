@@ -4,8 +4,6 @@
 terminal, editor, and browser, so multi-step research (docs, deps, running
 code) happens autonomously.
 
-**Sourced from:** Cognition Devin.
-
 **Status in atomic-forge:** Not a goal — forge explicitly scopes to
 local/CI execution, not a full virtual desktop; browser access is out of
 scope per the README's "What this doesn't try to be" section.
@@ -32,19 +30,6 @@ stated non-goals ("Not a general production-infrastructure platform"). Including
 it in the backlog is more a documentation exercise (know what Devin does and
 why forge doesn't) than a real gap to close — flagged again in the Open
 Questions section of the top-level `requirements.md` as likely scope creep.
-
-## What needs to be done (to beat the competition)
-
-**Nothing — and saying so explicitly is the win.** Devin's persistent
-terminal+editor+browser sandbox is expensive to build and run; competing on
-it means competing on infrastructure spend, not on the repair-loop quality
-that's forge's actual thesis. The correct competitive move is a clear
-statement in the README/docs: forge intentionally stays a library/CLI you
-run in *your* environment (local, CI, or your own sandbox), so users who
-already have infra (a CI runner, a devcontainer) don't pay for one they
-don't need. If a user's workflow genuinely needs autonomous doc-browsing or
-dependency research, that's the signal to integrate forge as a component
-*inside* an orchestrator like OpenHands/Devin, not to rebuild their sandbox.
 
 ## Implementation plan
 

@@ -210,7 +210,7 @@ one-shot instead of long-lived).
 - README: "Sandboxing" section — one paragraph: bounded one-shot cells
   by default, why not a persistent VM, when to integrate forge inside
   an OpenHands/Devin orchestrator instead.
-- Update [[Environment-Bootstrap]] status: from
+- Update [[Persistent-Sandbox]] status: from
   "no action" to "met, differently — cells; persistent-VM explicitly
   not built, with reasons".
 

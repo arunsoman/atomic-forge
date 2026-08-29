@@ -32,4 +32,4 @@ reference implementation each. Bring your own (a real error tracker, a
 real load balancer / Kubernetes) by implementing the same protocol —
 nothing else about `WatchdogLoop` changes. This is the boundary of
 "production infrastructure" forge draws deliberately: see
-[[Environment-Bootstrap]] and [[Design-Notes]].
+[[Persistent-Sandbox]] and [[Design-Notes]].
