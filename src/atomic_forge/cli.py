@@ -16,7 +16,13 @@ atomic-forge CLI.
         # on a real health check. --deploy-cmd is optional: omit it to
         # just detect+patch+commit with no canary phase.
 
-Phases: run | generate | qa | repair | decompose | watch
+    python -m atomic_forge fix https://github.com/<owner>/<repo>/issues/<N>
+        # one-shot issue -> PR: CIE (required) indexes the repo and generates a
+        # failing regression test from the issue, forge's repair loop fixes the
+        # bug against it, and on green a PR is opened from your FORK (never
+        # pushed to origin). --dry-run does everything except the push/PR.
+
+Phases: run | generate | qa | repair | decompose | watch | fix
 """
 from __future__ import annotations
 
@@ -41,11 +47,12 @@ from .watchdog import LocalProcessCanaryDeployer, LogFailureDetector, WatchdogLo
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="atomic-forge",
                                 description="Agentic code generation + SOTA repair loop.")
-    p.add_argument("phase", choices=["run", "generate", "qa", "repair", "decompose", "watch"])
+    p.add_argument("phase", choices=["run", "generate", "qa", "repair", "decompose", "watch", "fix"])
     p.add_argument("--tasks", default="tasks.json")
     p.add_argument("--project-dir", default="./forge_out")
     p.add_argument("--test-cmd", default=None, help="force a test command (default: auto-detect)")
-    p.add_argument("--max-rounds", type=int, default=3)
+    p.add_argument("--max-rounds", type=int, default=None,
+                   help="repair/fix max rounds (default: 3 for repair, 5 for fix)")
     p.add_argument("--samples", type=int, default=2, help="patch candidates per repair round")
     p.add_argument("--report", choices=["none", "jsonl"], default="none",
                    help="write artifacts/status/repair events to .forge/reports.jsonl")
@@ -57,6 +64,18 @@ def main(argv=None) -> int:
     p.add_argument("--pr-branch", default=None, help="[--raise-pr] feature branch name (default: forge/fix-<ts>).")
     p.add_argument("--pr-title", default=None, help="[--raise-pr] override the PR title.")
     p.add_argument("--pr-body-file", default=None, help="[--raise-pr] path to a markdown PR body.")
+    # --- fix <github_issue_url> ---
+    p.add_argument("url", nargs="?", default=None,
+                   help="[fix] GitHub issue URL: https://github.com/<owner>/<repo>/issues/<N>")
+    p.add_argument("--install-cmd", default=None,
+                   help="[fix] override the project install command (e.g. 'pip install -e .'); "
+                        "pass an empty string to skip installing the project entirely.")
+    p.add_argument("--max-turns", type=int, default=10, help="[fix] max test-generation agent turns")
+    p.add_argument("--dry-run", action="store_true",
+                   help="[fix] do everything except push to the fork / open the PR.")
+    p.add_argument("--issue-body-file", default=None,
+                   help="[fix] use this file as the issue body instead of fetching it via gh "
+                        "(the URL is still needed for owner/repo/number).")
     p.add_argument("--backend", choices=["local", "graph"], default="local",
                    help="tool backend: 'local' (in-memory, rebuilt per process) or "
                         "'graph' (persisted SQLite call graph, .forge/codegraph.db)")
@@ -74,7 +93,11 @@ def main(argv=None) -> int:
                    help="[watch] stop after N poll cycles (omit to run forever)")
     args = p.parse_args(argv)
 
-    llm = default_llm()
+    try:
+        llm = default_llm()
+    except RuntimeError as e:
+        print(f"[forge] {e}", file=sys.stderr)
+        return 2
 
     if args.phase == "decompose":
         if not args.spec:
@@ -121,6 +144,21 @@ def main(argv=None) -> int:
                 deployer.teardown_all()
         return 0
 
+    if args.phase == "fix":
+        from .fix import run_fix
+        if not args.url:
+            print("[forge] fix requires a GitHub issue URL:\n"
+                  "  atomic-forge fix https://github.com/<owner>/<repo>/issues/<N>", file=sys.stderr)
+            return 2
+        project_dir = (Path(args.project_dir) if args.project_dir and args.project_dir != "./forge_out"
+                       else None)
+        issue_body_file = Path(args.issue_body_file) if args.issue_body_file else None
+        r = run_fix(args.url, llm, project_dir=project_dir, install_cmd=args.install_cmd,
+                    max_rounds=args.max_rounds or 5, max_turns=args.max_turns,
+                    dry_run=args.dry_run, pr_base=args.pr_base, pr_branch=args.pr_branch,
+                    pr_title=args.pr_title, issue_body_file=issue_body_file, samples=args.samples)
+        return 0 if r.get("success") else 1
+
     batch = load_batch_json(args.tasks)
     project_dir = Path(args.project_dir).resolve()
     project_dir.mkdir(parents=True, exist_ok=True)
@@ -161,7 +199,7 @@ def main(argv=None) -> int:
                 print(f"[forge] --raise-pr: could not prepare branch ({e}); continuing on current branch")
         print("[forge] phase 3/3: testing + repair loop...")
         report = repair_loop_agentic(project_dir, llm, tools, traj,
-                                     test_cmd=args.test_cmd, max_rounds=args.max_rounds,
+                                     test_cmd=args.test_cmd, max_rounds=args.max_rounds or 3,
                                      samples=args.samples, timeout=args.timeout,
                                      reporter=reporter,
                                      tasks_by_file={t.file_path: t.name for t in batch.dev_tasks()})

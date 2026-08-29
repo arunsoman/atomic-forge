@@ -112,6 +112,81 @@ def raise_pr(project_dir, *, title: str, body: str = "", base: Optional[str] = N
     return {"pr_url": url, "branch": head, "base": base, "title": title}
 
 
+def gh_login() -> str:
+    """The authenticated GitHub username (via `gh`)."""
+    r = subprocess.run(["gh", "api", "user", "-q", ".login"],
+                       capture_output=True, text=True)
+    if r.returncode != 0 or not r.stdout.strip():
+        raise RuntimeError(f"could not resolve GitHub login via `gh`: {(r.stderr or r.stdout).strip()}")
+    return r.stdout.strip()
+
+
+def ensure_fork(project_dir, upstream: str) -> tuple[str, str]:
+    """Make sure the authenticated user has a fork of `upstream` (owner/repo)
+    on GitHub, and that a local git remote named `fork` points at it. Returns
+    (login, fork_url). NEVER pushes to `origin` — `origin` is the cloned
+    upstream and is fetch-only; all pushes go to the `fork` remote."""
+    project_dir = Path(project_dir)
+    login = gh_login()
+    repo = upstream.split("/")[-1]
+    fork_url = f"https://github.com/{login}/{repo}.git"
+    # Create the fork on GitHub if it doesn't already exist. `gh repo fork`
+    # is idempotent enough; a non-zero exit here usually means it already
+    # exists, which is fine — we just need the remote to point at it.
+    subprocess.run(["gh", "repo", "fork", upstream, "--clone=false"],
+                   cwd=str(project_dir), capture_output=True, text=True)
+    # Point a local `fork` remote at the user's fork (add or fix-up).
+    if _git(["remote", "get-url", "fork"], project_dir, check=False):
+        _git(["remote", "set-url", "fork", fork_url], project_dir)
+    else:
+        _git(["remote", "add", "fork", fork_url], project_dir)
+    return login, fork_url
+
+
+def raise_pr_via_fork(project_dir, *, upstream: str, title: str, body: str = "",
+                      base: Optional[str] = None, dry_run: bool = False) -> dict:
+    """Fork-only PR: push the current branch to the authenticated user's
+    FORK of `upstream` (owner/repo) and open a PR `fork -> upstream`.
+
+    Never pushes to `origin` (the cloned upstream). `upstream` is the
+    owner/repo the issue lives in. `base` defaults to that repo's default
+    branch. Call `prepare_pr_branch` first so the fix is on a feature
+    branch."""
+    project_dir = Path(project_dir)
+    head = _git(["rev-parse", "--abbrev-ref", "HEAD"], project_dir)
+    base = base or default_branch_for(upstream)
+    if head == base:
+        raise RuntimeError(
+            f"refusing to PR the default branch ({head!r}) onto itself — "
+            "call prepare_pr_branch() first so the fix is on a feature branch.")
+    if dry_run:
+        return {"dry_run": True, "branch": head, "base": base, "upstream": upstream,
+                "title": title, "body_len": len(body)}
+    login, fork_url = ensure_fork(project_dir, upstream)
+    push = _git(["push", "-u", "fork", head], project_dir, check=False)
+    if not _git(["rev-parse", "--abbrev-ref", f"fork/{head}"], project_dir, check=False):
+        raise RuntimeError(
+            f"git push fork {head} failed (fork={fork_url}): {push!r}")
+    cmd = ["gh", "pr", "create", "--repo", upstream, "--head", f"{login}:{head}",
+           "--base", base, "--title", title, "--body", body]
+    r = subprocess.run(cmd, cwd=str(project_dir), capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"gh pr create failed: {(r.stderr or r.stdout).strip()}")
+    url = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else ""
+    return {"pr_url": url, "branch": head, "base": base, "upstream": upstream,
+            "fork": fork_url, "title": title}
+
+
+def default_branch_for(upstream: str) -> str:
+    """Default branch of an owner/repo, via `gh` (falls back to 'main')."""
+    r = subprocess.run(
+        ["gh", "repo", "view", upstream, "--json", "defaultBranchRef", "-q", ".defaultBranchRef.name"],
+        capture_output=True, text=True)
+    if r.returncode == 0 and r.stdout.strip():
+        return r.stdout.strip()
+    return "main"
+
+
 def summarize_repair_for_pr(report: dict, case_name: str = "") -> tuple[str, str]:
     """Turn a repair_loop_agentic report dict into a (title, body) for a PR.
     Best-effort — callers can override either."""
