@@ -3,7 +3,7 @@
 Thanks for your interest in improving atomic-forge! This is a small,
 opinionated codebase, so a few conventions keep it coherent.
 
-> All contributions are licensed under the project's [MIT license](./LICENSE).
+> All contributions are licensed under the project's [Business Source License 1.1](./LICENSE).
 
 ## Quick start
 

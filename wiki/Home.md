@@ -52,4 +52,4 @@ See [`CONTRIBUTING.md`](https://github.com/arunsoman/atomic-forge/blob/main/CONT
 
 ## License
 
-[MIT](https://github.com/arunsoman/atomic-forge/blob/main/LICENSE).
+[Business Source License 1.1](https://github.com/kannamma-labs/atomic-forge/blob/main/LICENSE) — production use requires a commercial license; converts to GPL-3.0+ on 2030-08-29.

@@ -1,1 +1,1 @@
-*atomic-forge — an agentic generate → test → repair loop with a machine-checked task contract, crash-safe checkpointing, and execution-selected repairs. [MIT licensed](https://github.com/arunsoman/atomic-forge/blob/main/LICENSE).*
+*atomic-forge — an agentic generate → test → repair loop with a machine-checked task contract, crash-safe checkpointing, and execution-selected repairs. [BSL 1.1 licensed](https://github.com/kannamma-labs/atomic-forge/blob/main/LICENSE).*

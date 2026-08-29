@@ -8,13 +8,13 @@ version = "0.2.0"
 description = "The reliable, test-driven repair engine you can drop under any coding agent. Issue -> failing test -> repair -> PR, with a machine-checked task contract, execution-selected patches, and crash-safe resumable runs."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = { text = "BSL-1.1" }
 authors = [{ name = "Arun Soman" }]
 keywords = ["llm", "codegen", "agent", "coding-agent", "repair-loop", "swe-bench", "autonomous-agent", "github-action", "ollama", "checkpointing", "code-graph", "test-generation"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: Other/Proprietary License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
