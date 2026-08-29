@@ -28,6 +28,7 @@ import inspect
 from pathlib import Path
 from typing import Optional, Protocol
 
+from . import graph_statements
 from .codegraph import CodeGraph
 from .symbols import SymbolIndex
 
@@ -36,6 +37,7 @@ VIEW_WINDOW = 100
 
 class ToolBackend(Protocol):
     def view_file(self, path: str, start: int = 1, end: int = VIEW_WINDOW) -> dict: ...
+    def view_window(self, path: str, center_line: int, radius: int = VIEW_WINDOW // 2) -> dict: ...
     def search_symbol(self, name: str, kind: str = "") -> dict: ...
     def file_skeleton(self, path: str) -> dict: ...
     def callers(self, symbol: str) -> dict: ...
@@ -123,6 +125,16 @@ class LocalToolBackend:
                          truncated=end < len(lines),
                          hint=None if end >= len(lines) else f"{len(lines) - end} more lines; call again with a later start")
 
+    def view_window(self, path: str, center_line: int, radius: int = VIEW_WINDOW // 2) -> dict:
+        """`view_file`, but addressed by a center line + radius instead of
+        an explicit start/end — the shape `repair_agent.py`'s localization
+        evidence (a traceback line, a blast-radius suspect) naturally
+        produces, so a caller doesn't have to hand-compute
+        ``max(1, line - radius)`` at every call site."""
+        start = max(1, center_line - radius)
+        end = center_line + radius
+        return self.view_file(path, start=start, end=end)
+
     def file_skeleton(self, path: str) -> dict:
         syms = self.index.file_skeleton(path)
         if not syms:
@@ -175,6 +187,44 @@ class LocalToolBackend:
         return _envelope("affected_by", hits,
                          hint=None if hits else f"nothing depends on {file_path!r} yet" if direction == "incoming"
                          else f"{file_path!r} calls nothing else known")
+
+    def statement_graph(self, file: str, line: Optional[int] = None, radius: int = 5) -> dict:
+        """Statement-level context around `line` in `file` (R11): each row
+        names the statement, what it defines, and which earlier statement
+        each read name comes from (def-use). Rows are annotated metadata,
+        not source dumps — pair with view_file for the code itself."""
+        f = self.project_dir / file
+        if not f.is_file():
+            return _envelope("statement_graph", [], ok=False, hint=f"no such file: {file}")
+        try:
+            text = f.read_text(errors="replace")
+        except OSError:
+            return _envelope("statement_graph", [], ok=False, hint=f"unreadable: {file}")
+        rows, edges = graph_statements.extract(
+            file, text, enclosing_symbols=self.index.file_skeleton(file))
+        if not rows:
+            return _envelope("statement_graph", [],
+                             hint=f"no statements extracted from {file}")
+        anchor = line if line is not None else rows[0]["line"]
+        # resolve def_use in-memory: edge (d, u, name) = row u reads a name
+        # bound at row d
+        defines_at: dict[int, list[str]] = {}
+        reads_at: dict[int, list[str]] = {}
+        for d_i, u_i, name, _conf in edges:
+            defines_at.setdefault(d_i, []).append(name)
+            reads_at.setdefault(u_i, []).append(name)
+        window = [r for r in rows
+                  if r["line"] <= anchor + radius and r["end_line"] >= anchor - radius]
+        results = []
+        for r in window[:40]:
+            i = rows.index(r)
+            results.append({**r, "defines": sorted(defines_at.get(i, [])),
+                            "reads_from": sorted(reads_at.get(i, []))})
+        return _envelope("statement_graph", results,
+                         truncated=len(window) > len(results),
+                         total=len(rows),
+                         hint=None if len(window) <= len(results)
+                         else f"window clipped to 40 rows; pass a more specific line")
 
     def failing_context(self, test: str) -> dict:
         """Given a failing test id (`path/to/test_x.py` or
@@ -331,6 +381,9 @@ class GraphToolBackend:
     def view_file(self, path: str, start: int = 1, end: int = VIEW_WINDOW) -> dict:
         return self._local.view_file(path, start, end)
 
+    def view_window(self, path: str, center_line: int, radius: int = VIEW_WINDOW // 2) -> dict:
+        return self._local.view_window(path, center_line, radius)
+
     def resolve_import(self, symbol: str, importing_file: str = "", language: str = "") -> dict:
         hits = self.graph.find(symbol)
         if not hits:
@@ -339,6 +392,25 @@ class GraphToolBackend:
             {"symbol": s.name, "defined_in": s.file, "import_statement": _import_statement(s.file, s.name, importing_file)}
             for s in hits
         ])
+
+    def statement_graph(self, file: str, line: Optional[int] = None, radius: int = 5) -> dict:
+        """Graph-backed counterpart of LocalToolBackend.statement_graph:
+        same shape, answered from the persisted statements/def_use tables
+        (codegraph.statements_near) — survives process restarts and avoids
+        re-parsing the file per call."""
+        if not (self.project_dir / file).is_file():
+            return _envelope("statement_graph", [], ok=False, hint=f"no such file: {file}")
+        rows = self.graph.statements_near(file, line if line is not None else 1, radius=radius)
+        if not rows:
+            return _envelope("statement_graph", [],
+                             hint=f"no statements recorded near line {line} in {file} "
+                                  "(non-Python files record function blocks without "
+                                  "def_use edges — see graph_statements.py)")
+        results = rows[:40]
+        return _envelope("statement_graph", results,
+                         truncated=len(rows) > len(results), total=len(rows),
+                         hint=None if len(rows) <= len(results)
+                         else "window clipped to 40 rows; pass a more specific line")
 
     def failing_context(self, test: str) -> dict:
         return self._local.failing_context(test)

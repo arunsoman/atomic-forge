@@ -268,6 +268,21 @@ def exec_in(container: str, cmd: str, cwd: Path, timeout: int,
         _exit_exec(container)
 
 
+def commit_image(container: str, tag: str) -> Optional[str]:
+    """Snapshot a container's filesystem+state into a reusable image (the
+    R16c agentic bootstrap's atomic-configuration synthesis, and Cells'
+    baked base image). Returns the tag, or None on failure — callers treat
+    None as "no snapshot available" and fall back to the base image.
+    Never raises."""
+    try:
+        result = subprocess.run(
+            ["docker", "commit", container, tag], capture_output=True, text=True, timeout=120,
+        )
+        return tag if result.returncode == 0 else None
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+
+
 def kill(container: str) -> None:
     subprocess.run(["docker", "kill", container], capture_output=True, timeout=30)
 

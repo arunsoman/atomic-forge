@@ -23,6 +23,7 @@ import hashlib
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -70,7 +71,16 @@ and re-running — that's guessing arithmetic. Instead COMPUTE it: read the
 failing file's own path and the target file's real path (TOOL view_file /
 a directory listing), count the actual directory levels between them, or
 replace the hardcoded `parents[N]` entirely with a marker-based walk that
-finds a known ancestor directory by name instead of by a magic index."""
+finds a known ancestor directory by name instead of by a magic index.
+
+DEEP LOCALIZATION IN LONG FUNCTIONS: when a suspect file is large, or the
+traceback line sits deep inside one function and the first read doesn't
+reveal the bug, call TOOL statement_graph(file, traceback_line) — it
+returns that statement's def-use context: which statement DEFINED the
+value you're seeing, and which later statements use it. Prefer it over
+re-reading a long function line-by-line; it also resolves a variable's
+origin when name shadowing makes the wrong definition look like the
+right one. Not useful for one-line functions or non-Python blocks."""
 
 
 # --------------------------------------------------------------------------
@@ -319,6 +329,49 @@ class Candidate:
     turns: int = 0
 
 
+_PLAN_MARKER = "state your fix plan"
+
+_ARCHITECT_PROMPT_SUFFIX = f"""
+
+Before patching, {_PLAN_MARKER}: which symbol(s) you will change, and what
+must NOT change (constraints). Respond with EXACTLY 3 short lines, no other
+text:
+TARGET: <symbol or region you will change>
+CHANGE: <one-line description of the fix>
+CONSTRAINTS: <what must keep working / not change>"""
+
+
+def _plan_repair(llm: ChatLLM, top_file: str, task_prompt: str, traj: Trajectory) -> Optional[str]:
+    """One extra, cheap LLM call ahead of K-sampling: ask for a short
+    structured statement of intent (target symbol, the fix, and what must
+    not break) before any patch is attempted. This is the "architect" half
+    of an Aider-style planner/executor split — see req-planner-executor-
+    split.md for why it's a single extra call against the SAME model
+    rather than a genuinely separate cheap/expensive model pair (forge has
+    no per-role model configuration yet; that's real follow-up work, not
+    faked here) and why it defaults OFF (`architect_mode=False`) pending a
+    live-LLM benchmark comparison against plain K-sampling, per SAFEdit's
+    finding that decomposition doesn't automatically improve reliability.
+
+    Returns the plan text, or None if the call failed or came back empty
+    (caller falls back to the unplanned task_prompt — a failed planning
+    call should never block the repair attempt it was meant to help)."""
+    try:
+        plan_text = llm.chat(
+            [{"role": "user", "content": task_prompt + _ARCHITECT_PROMPT_SUFFIX}],
+            temperature=0.0,
+        )
+    except Exception as e:  # noqa: BLE001 — planning is optional, never fatal
+        traj.log("repair_plan", file=top_file, ok=False, reason=str(e))
+        return None
+    plan_text = (plan_text or "").strip()
+    if not plan_text:
+        traj.log("repair_plan", file=top_file, ok=False, reason="empty response")
+        return None
+    traj.log("repair_plan", file=top_file, ok=True, plan=plan_text)
+    return plan_text
+
+
 def _attempt_patch(file_rel: str, task_prompt: str, llm: ChatLLM, tools: ToolBackend,
                    project_dir: Path, traj: Trajectory, temperature: float,
                    max_turns: int, sample_no: int,
@@ -371,7 +424,9 @@ def repair_loop_agentic(project_dir, llm: ChatLLM, tools: ToolBackend, traj: Tra
                         on_persisted: Optional["Callable[[str, str], None]"] = None,
                         tool_manifest_text: str = "",
                         tool_manifest: Optional[list] = None,
-                        on_progress: Optional[ProgressCallback] = None) -> dict:
+                        on_progress: Optional[ProgressCallback] = None,
+                        parallel_samples: bool = True,
+                        architect_mode: bool = False) -> dict:
     """The full SOTA loop. Returns a report dict.
 
     reporter: optional Reporter for task-graph write-back.
@@ -397,6 +452,27 @@ def repair_loop_agentic(project_dir, llm: ChatLLM, tools: ToolBackend, traj: Tra
     on_progress: optional (phase, status, detail) callback. Emits at
     loop-level granularity only ("repairing" overall, "repair_round" per
     round) — not per candidate/per test run, which would flood a live UI.
+
+    parallel_samples: run the K sampled agentic attempts concurrently
+    (default True) instead of one after another. Safe because each
+    attempt's `submit_check` only validates a candidate patch in memory
+    (`_apply_patch` + `lint_gate`) — nothing writes to `project_dir` or the
+    tool backend's on-disk index until AFTER all K attempts finish and one
+    is selected, sequentially, in the execution-based-selection block
+    below. `tools`, `llm`, and `traj` are all already safe for this: LLM
+    calls are per-thread-safe (see llm.py's `_client_lock`/`UsageTracker`
+    lock), `Trajectory.log` is append-only and already called from
+    concurrent worker threads elsewhere (generate_agent.py), and
+    `GraphToolBackend`/`CodeGraph` serialize their SQLite connection behind
+    a lock (see codegraph.py). Set False to force the old sequential
+    behavior (useful for deterministic trajectory-ordering in tests/
+    debugging, or providers where concurrent calls aren't wanted).
+
+    architect_mode: opt-in "planner" pass — see `_plan_repair`'s docstring.
+    Default False: not yet validated against plain K-sampling on forge's
+    own benchmarks (see req-planner-executor-split.md), so it costs one
+    extra LLM call per round without a confirmed win. Safe to enable per
+    call site once that validation exists.
     """
     project_dir = Path(project_dir)
     t0 = time.time()
@@ -511,16 +587,34 @@ def repair_loop_agentic(project_dir, llm: ChatLLM, tools: ToolBackend, traj: Tra
             )
             pending_violations = []
 
+        if architect_mode:
+            plan = _plan_repair(llm, top.file, task_prompt, traj)
+            if plan:
+                task_prompt += f"\n\n# Repair plan (architect pass)\n{plan}\n\nFollow this plan."
+
         # --- sample K agentic attempts on the prime suspect
         candidates: list[Candidate] = []
-        for k in range(samples):
-            cand = _attempt_patch(top.file, task_prompt, llm, tools, project_dir, traj,
-                                  temperature=0.0 if k == 0 else 0.7,
-                                  max_turns=max_turns_per_attempt, sample_no=k,
-                                  tool_manifest_text=tool_manifest_text,
-                                  tool_manifest=tool_manifest)
-            if cand:
-                candidates.append(cand)
+        if parallel_samples and samples > 1:
+            with ThreadPoolExecutor(max_workers=samples) as pool:
+                futures = [
+                    pool.submit(_attempt_patch, top.file, task_prompt, llm, tools, project_dir, traj,
+                               0.0 if k == 0 else 0.7, max_turns_per_attempt, k,
+                               tool_manifest_text, tool_manifest)
+                    for k in range(samples)
+                ]
+                for fut in as_completed(futures):
+                    cand = fut.result()
+                    if cand:
+                        candidates.append(cand)
+        else:
+            for k in range(samples):
+                cand = _attempt_patch(top.file, task_prompt, llm, tools, project_dir, traj,
+                                      temperature=0.0 if k == 0 else 0.7,
+                                      max_turns=max_turns_per_attempt, sample_no=k,
+                                      tool_manifest_text=tool_manifest_text,
+                                      tool_manifest=tool_manifest)
+                if cand:
+                    candidates.append(cand)
 
         if not candidates:
             traj.log("repair", result="no candidate produced", round=round_no, file=top.file)

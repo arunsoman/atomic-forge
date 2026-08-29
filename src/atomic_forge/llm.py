@@ -206,13 +206,51 @@ def set_mock_factory(factory: Callable[[], ChatLLM]) -> None:
     _mock_factory = factory
 
 
-def default_llm(provider_override: Optional[str] = None) -> ChatLLM:
+class LocalOnlyViolation(RuntimeError):
+    """Raised by `default_llm(local_only=True)` when the resolved endpoint
+    isn't a private/loopback host — see that function's docstring."""
+
+
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+
+
+def _is_local_host(base_url: Optional[str]) -> bool:
+    """True if `base_url` has no host at all (default resolves to OpenAI's
+    own api.openai.com — never local) or resolves to a loopback/private
+    address. Conservative on purpose: anything not clearly identifiable as
+    local is treated as NOT local, since this backs an explicit privacy
+    guarantee (R15) — a false "yes it's local" is the failure mode that
+    actually matters here, not a false "no."""
+    if not base_url:
+        return False
+    from urllib.parse import urlparse
+    host = (urlparse(base_url).hostname or "").lower()
+    if host in _LOCAL_HOSTS:
+        return True
+    try:
+        import ipaddress
+        return ipaddress.ip_address(host).is_private
+    except ValueError:
+        return False
+
+
+def default_llm(provider_override: Optional[str] = None, local_only: bool = False) -> ChatLLM:
     """Resolve a real backend, or the mock set via `set_mock_factory`, per
     this module's docstring precedence. `provider_override` is accepted
     for API parity with callers that want to force a specific provider —
     unused beyond logging here since this module only ever resolves ONE
     OpenAI-compatible endpoint at a time; multi-provider routing is your
-    integration's job, not forge's."""
+    integration's job, not forge's.
+
+    local_only (R15): if True, refuse to return an endpoint that isn't
+    loopback/private (e.g. a local Ollama/vLLM/llama.cpp server) — raises
+    `LocalOnlyViolation` instead of silently proceeding against a hosted
+    endpoint (OpenAI, OpenRouter, a cloud proxy). Makes forge's "you CAN
+    run fully local, nothing has to leave your machine" claim enforced,
+    not just possible — see the wiki page 'Data Privacy / No Training' (R15).
+    FORGE_MOCK is always allowed regardless: it's a Python callable, never
+    network traffic, so it can't violate this guarantee by construction.
+    """
     if os.environ.get("FORGE_MOCK", "").lower() in ("1", "true", "yes"):
         if _mock_factory is None:
             raise RuntimeError(
@@ -221,10 +259,20 @@ def default_llm(provider_override: Optional[str] = None) -> ChatLLM:
             )
         return _mock_factory()
 
+    def _check_local(base_url: Optional[str], source: str) -> None:
+        if local_only and not _is_local_host(base_url):
+            raise LocalOnlyViolation(
+                f"--local-only was set, but the resolved endpoint ({source}: "
+                f"base_url={base_url!r}) isn't loopback/private. Point it at a "
+                "local server (e.g. Ollama's OpenAI-compatible endpoint, "
+                "http://localhost:11434/v1) or drop --local-only."
+            )
+
     forge_key = os.environ.get("FORGE_API_KEY")
     forge_base = os.environ.get("FORGE_BASE_URL")
     forge_model = os.environ.get("FORGE_MODEL")
     if forge_key or forge_base or forge_model:
+        _check_local(forge_base, "FORGE_BASE_URL")
         logger.info("default_llm: FORGE_* override (base_url=%s, model=%s)", forge_base, forge_model)
         return OpenAICompatLLM(
             model=forge_model or "gpt-4o-mini", base_url=forge_base,
@@ -233,9 +281,11 @@ def default_llm(provider_override: Optional[str] = None) -> ChatLLM:
 
     openai_key = os.environ.get("OPENAI_API_KEY")
     if openai_key:
+        openai_base = os.environ.get("OPENAI_BASE_URL")
+        _check_local(openai_base, "OPENAI_BASE_URL")
         return OpenAICompatLLM(
             model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
-            base_url=os.environ.get("OPENAI_BASE_URL"),
+            base_url=openai_base,
             api_key=openai_key, provider=provider_override or "openai",
         )
 

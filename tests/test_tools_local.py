@@ -82,3 +82,37 @@ def test_describe_lists_callable_tools(tmp_path):
     assert "view_file" in names
     assert "write_file" in names
     assert "describe" not in names  # excluded from its own manifest
+
+
+def test_view_window_centers_on_line(tmp_path):
+    lines = [f"line{i}" for i in range(1, 51)]
+    tools = LocalToolBackend(tmp_path)
+    tools.write_file("big.py", "\n".join(lines) + "\n")
+    r = tools.view_window("big.py", center_line=25, radius=5)
+    assert r["ok"]
+    body = r["results"][0]
+    assert body["start"] == 20
+    assert body["end"] == 30
+    assert "line25" in body["content"]
+    assert "line19" not in body["content"]
+    assert "line31" not in body["content"]
+
+
+def test_view_window_clamps_start_below_one(tmp_path):
+    tools = LocalToolBackend(tmp_path)
+    tools.write_file("small.py", "a\nb\nc\n")
+    r = tools.view_window("small.py", center_line=1, radius=10)
+    assert r["ok"]
+    assert r["results"][0]["start"] == 1
+
+
+def test_view_window_on_graph_backend(tmp_path):
+    from atomic_forge.tools import GraphToolBackend
+    tools = GraphToolBackend(tmp_path)
+    try:
+        tools.write_file("g.py", "\n".join(f"x{i}" for i in range(1, 21)) + "\n")
+        r = tools.view_window("g.py", center_line=10, radius=3)
+        assert r["ok"]
+        assert r["results"][0]["start"] == 7
+    finally:
+        tools.__exit__(None, None, None)

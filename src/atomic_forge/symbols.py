@@ -22,7 +22,13 @@ _SKIP_DIRS = {
     ".pytest_cache", "dist", "build", ".next", ".angular", "target", ".gradle",
     ".forge",
 }
-_EXTENSIONS = {".py", ".js", ".jsx", ".ts", ".tsx", ".java"}
+_EXTENSIONS = {
+    ".py", ".js", ".jsx", ".ts", ".tsx", ".java",
+    # C/C++ (R16a): regex-heuristic tier, same as JS/TS/Java — see
+    # _parse_cpp's docstring for what the heuristic does and doesn't
+    # promise.
+    ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp",
+}
 
 _JS_DEF_RE = re.compile(
     r"^[ \t]*(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)", re.MULTILINE)
@@ -32,6 +38,19 @@ _JS_CONST_FN_RE = re.compile(
 _JAVA_CLASS_RE = re.compile(r"^[ \t]*(?:public|private|protected)?\s*(?:abstract\s+)?class\s+(\w+)", re.MULTILINE)
 _JAVA_METHOD_RE = re.compile(
     r"^[ \t]*(?:public|private|protected)\s+(?:static\s+)?[\w<>\[\],\s]+?\s(\w+)\s*\(([^)]*)\)\s*\{", re.MULTILINE)
+_CPP_CLASS_RE = re.compile(
+    r"^[ \t]*(?:template\s*<[^>]*>\s*)?(?:class|struct)\s+(\w+)", re.MULTILINE)
+_CPP_FUNC_RE = re.compile(
+    # A C/C++ function or method definition: a type-ish prefix, an optional
+    # separator (space, pointer star, reference amp, or a `::` for out-of-class
+    # method definitions like `Foo::bar(...) {`), the name, args, and an
+    # opening brace — the brace is what separates a definition from a call
+    # expression (`return foo(x);` has no brace and never matches).
+    r"^[ \t]*[A-Za-z_][\w:<>,*&\s]*?[\s*&:]+\**\s*(\w+)\s*\(([^;{)]*)\)\s*(?:const\s*)?(?:noexcept\s*)?\{",
+    re.MULTILINE)
+_CPP_CONTROL_KEYWORDS = frozenset(
+    {"if", "else", "for", "while", "do", "switch", "case", "default",
+     "catch", "return", "sizeof", "new", "delete", "throw", "foreach", "FOREACH"})
 _CALL_RE_TEMPLATE = r"\b{name}\s*\("
 
 
@@ -87,6 +106,8 @@ class SymbolIndex:
             return self._parse_py(rel, text)
         if suffix == ".java":
             return self._parse_java(rel, text)
+        if suffix in (".c", ".cc", ".cpp", ".cxx", ".h", ".hpp"):
+            return self._parse_cpp(rel, text)
         return self._parse_ts(rel, text)
 
     def _parse_py(self, rel: str, text: str) -> List[Symbol]:
@@ -148,6 +169,51 @@ class SymbolIndex:
         for m in _JAVA_METHOD_RE.finditer(text):
             line = text.count("\n", 0, m.start()) + 1
             matches.append((line, m.group(1), "method", f"{m.group(1)}({m.group(2)})"))
+        matches.sort(key=lambda t: t[0])
+        for i, (line, name, kind, sig) in enumerate(matches):
+            end = matches[i + 1][0] - 1 if i + 1 < len(matches) else lines
+            out.append(Symbol(name=name, kind=kind, file=rel, line=line, end_line=end, signature=sig))
+        return out
+
+    def _parse_cpp(self, rel: str, text: str) -> List[Symbol]:
+        """C/C++ heuristic parser, same honesty tier as `_parse_ts`/
+        `_parse_java`: regexes over the raw text, not a real C++ grammar.
+
+        Catches the shapes the repair loop actually needs to localize
+        against — functions, struct/class declarations, and out-of-class
+        method definitions (`Foo::bar(...) {`) — and deliberately misses
+        the exotic corners (operator overloads, K&R declarations,
+        macro-generated functions). Control statements (`if (x) {`) can't
+        false-positive because the regex requires a type-ish prefix +
+        separator before the name, and keywords like `if` are consumed by
+        the prefix pattern rather than the name capture. Preprocessor
+        lines (`#define FOO(x) do {`) can't match either — the prefix must
+        start with a letter, and `#` isn't in its class."""
+        out: List[Symbol] = []
+        lines = text.count("\n") + 1
+        matches: List[tuple[int, str, str, str]] = []  # (line, name, kind, sig)
+        for m in _CPP_FUNC_RE.finditer(text):
+            name = m.group(1)
+            if name in _CPP_CONTROL_KEYWORDS or name.startswith("_") and name.isupper():
+                continue  # macro invocations like `TEST_F(Foo, Bar)` and CALL(X)
+            line = text.count("\n", 0, m.start()) + 1
+            line_start = text.rfind("\n", 0, m.start()) + 1
+            # m.start() sits at the first non-space char of the line (the
+            # regex consumed `^[ \t]*`), so "indented" is just what the
+            # line's first character is. Indented definitions are treated
+            # as methods — free functions are essentially never indented,
+            # class-method definitions in headers usually are.
+            indented = text[line_start] in " \t"
+            prefix = m.group(0)[: m.group(0).index(m.group(1))]
+            kind = "method" if ("::" in prefix or indented) else "function"
+            args = m.group(2).strip().replace("\n", " ").strip()
+            signature = f"{name}({args})"
+            matches.append((line, name, kind, signature))
+        for m in _CPP_CLASS_RE.finditer(text):
+            line = text.count("\n", 0, m.start()) + 1
+            decl = text[m.start():m.end()]
+            kw = "struct" if "struct" in decl else "class"
+            matches.append((line, m.group(1), "class", f"{kw} {m.group(1)}"))
         matches.sort(key=lambda t: t[0])
         for i, (line, name, kind, sig) in enumerate(matches):
             end = matches[i + 1][0] - 1 if i + 1 < len(matches) else lines

@@ -1,16 +1,68 @@
 name: "atomic-forge"
 description: >
-  Run the atomic-forge generate -> test -> repair loop in CI: generate
-  files from an AtomicTaskBatch, synthesize tests from each task_triad,
+  Run atomic-forge in CI. Default (`command: run`): generate -> test ->
+  repair from an AtomicTaskBatch, synthesize tests from each task_triad,
   run the real suite, and repair failures with the localize -> sample ->
-  select -> gate loop. Thin wrapper around the `atomic-forge` CLI — no
-  hosted service, nothing runs outside this job.
+  select -> gate loop. `command: fix` / `fix-comment`: one-shot
+  issue-driven or review-comment-driven fix, opening a fork-only PR — wire
+  this to an `issue_comment`/`pull_request_review_comment` trigger for a
+  `@atomic-forge fix` mention flow (see examples/comment-triggered-fix.yml).
+  Thin wrapper around the `atomic-forge` CLI — no hosted service, nothing
+  runs outside this job.
 author: "Arun Soman"
 branding:
   icon: "cpu"
   color: "purple"
 
 inputs:
+  command:
+    description: >
+      Which atomic-forge phase to run: 'run' (generate -> test -> repair
+      from a tasks.json, the original behavior) or 'fix'/'fix-comment' —
+      R8/R9's issue-driven / review-comment-driven one-shot fix, opening a
+      fork-only PR. 'fix' and 'fix-comment' need a GitHub token with repo
+      scope exported as GH_TOKEN (gh CLI convention) for the fork+PR step.
+    required: false
+    default: "run"
+  issue-url:
+    description: "['fix'] GitHub issue URL: https://github.com/<owner>/<repo>/issues/<N>"
+    required: false
+    default: ""
+  issue-body:
+    description: >
+      ['fix'] the issue body text, e.g. ${{ github.event.issue.body }} —
+      skips the in-container `gh issue view` fetch (the container has no
+      GitHub auth of its own beyond GH_TOKEN's repo-scope PR permissions).
+    required: false
+    default: ""
+  repo:
+    description: "['fix-comment'] owner/repo, e.g. ${{ github.repository }}"
+    required: false
+    default: ""
+  comment-body:
+    description: "['fix-comment'] the review comment text, e.g. ${{ github.event.comment.body }}"
+    required: false
+    default: ""
+  file-path:
+    description: "['fix-comment'] repo-relative file path the comment was anchored to"
+    required: false
+    default: ""
+  line:
+    description: "['fix-comment'] the line the comment was anchored to (optional)"
+    required: false
+    default: ""
+  source-url:
+    description: "['fix-comment'] the PR/comment URL, for the PR body's 'Fixes' link"
+    required: false
+    default: ""
+  dry-run:
+    description: "['fix'/'fix-comment'] do everything except push/open the PR ('true'/'false')"
+    required: false
+    default: "false"
+  architect:
+    description: "opt-in planner pass before each repair round (see req-planner-executor-split.md). 'true'/'false'"
+    required: false
+    default: "false"
   tasks:
     description: "Path to the AtomicTaskBatch JSON file (relative to the checkout)."
     required: false
@@ -60,6 +112,8 @@ outputs:
     description: "The directory atomic-forge generated into — upload as a build artifact to inspect."
   trajectory-path:
     description: "Path to the run's .forge/trajectory.jsonl audit log, if the run got far enough to produce one."
+  pr-url:
+    description: "['fix'/'fix-comment'] the opened PR's URL, if success='true' and dry-run wasn't set."
 
 runs:
   using: "docker"

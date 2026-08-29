@@ -49,9 +49,21 @@ class Verdict(str, Enum):
 OWNER_KIND = "forge_run"
 
 Phase = Literal[
-    "decomposing", "scaffolded", "generate", "qa", "repair", "finished",
+    "bootstrap", "decomposing", "scaffolded", "generate", "qa", "repair", "finished",
 ]
 RunStatus = Literal["running", "passed", "failed", "crashed", "cancelled"]
+
+
+class BootstrapVerdict(str, Enum):
+    """Outcome of the R16 environment-bootstrap gate. `fix` exits early
+    with a clear stage="bootstrap" on every non-"bootstrapped" verdict
+    instead of letting a broken checkout fail confusingly downstream
+    (CIE indexing, testgen, repair)."""
+
+    BOOTSTRAPPED = "bootstrapped"                 # >=1 test discovered AND executed
+    FAILED_DETERMINISTIC = "failed_deterministic" # stack detected, probe didn't complete
+    FAILED_AGENTIC = "failed_agentic"             # agentic fallback exhausted (R16c)
+    UNSUPPORTED_ECOSYSTEM = "unsupported_ecosystem"  # no registered stack at all
 
 
 class ForgeRunRecord(BaseModel):
@@ -67,6 +79,11 @@ class ForgeRunRecord(BaseModel):
     #: task name -> verdict string.
     tested_verdicts: Dict[str, str] = Field(default_factory=dict)
     persisted_verdicts: Dict[str, str] = Field(default_factory=dict)
+    #: R16b — outcome of the environment-bootstrap gate (bootstrap.py),
+    #: recorded verbatim so a failed bootstrap is distinguishable from a
+    #: failed repair when auditing checkpoints after the fact.
+    bootstrap_verdict: Optional[str] = None
+    bootstrap_detail: Optional[str] = None
     repair_reports: List[dict] = Field(default_factory=list)
     #: label (e.g. "created", "phase:generate", "finished") -> ISO8601 UTC.
     timestamps: Dict[str, str] = Field(default_factory=dict)
@@ -157,6 +174,15 @@ class RunCheckpointer:
         self.record.phase = phase
         self.record.status = status
         self.record.timestamps[f"phase:{phase}"] = _now_iso()
+        self._save()
+
+    def mark_bootstrap(self, verdict: str, detail: str = "") -> None:
+        """Record the R16 bootstrap gate outcome ("bootstrapped" /
+        "failed_deterministic" / "unsupported_ecosystem" / ...) before any
+        downstream phase is allowed to run against the checkout."""
+        self.record.bootstrap_verdict = verdict
+        self.record.bootstrap_detail = detail
+        self.record.timestamps["phase:bootstrap"] = _now_iso()
         self._save()
 
     def mark_written(self, file_hashes: Dict[str, str]) -> None:
