@@ -235,9 +235,9 @@ class MCPToolBackend:
 
 # --------------------------------------------------------------- run one case
 def run_case(case_name, max_rounds=2, samples=2, max_turns=10):
-    seed = CASES_DIR / case_name
+    seed = CASES_DIR / case_name / "seed"
     if not seed.exists():
-        raise FileNotFoundError(f"case {case_name!r} not found in {CASES_DIR}")
+        raise FileNotFoundError(f"case {case_name!r} seed not found in {seed}")
     work = WORK_ROOT / case_name
     if work.exists():
         shutil.rmtree(work)

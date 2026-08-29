@@ -174,13 +174,13 @@ def generate_test(bridge: MCPBridge, work: Path, bug: str, max_turns: int = 10) 
 
 # --------------------------------------------------------------- one case
 def run_case(case_name: str, bug: str):
-    seed = CASES_DIR / case_name
+    seed = CASES_DIR / case_name / "seed"
     work = TG_WORK / case_name
     if work.exists():
         shutil.rmtree(work)
     work.mkdir(parents=True)
     shutil.copy(seed / "mod.py", work / "mod.py")          # buggy source, no test yet
-    fixed_src = (seed / "mod_fixed.py").read_text()          # the real fix (oracle ref)
+    fixed_src = (seed / "mod_fixed.py").read_text()           # the real fix (oracle ref)
 
     db = work / ".cie" / "graph.db"
     db.parent.mkdir(parents=True, exist_ok=True)
