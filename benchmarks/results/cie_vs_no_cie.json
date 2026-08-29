@@ -1,0 +1,308 @@
+{
+  "with_cie": {
+    "turns": 12,
+    "llm_calls": 12,
+    "prompt_tokens": 79494,
+    "completion_tokens": 3471,
+    "tool_calls": 11,
+    "tool_log": [
+      {
+        "turn": 1,
+        "tool": "view_file",
+        "args": {
+          "path": "tests/test_patch.py"
+        },
+        "result_len": 7405
+      },
+      {
+        "turn": 2,
+        "tool": "view_file",
+        "args": {
+          "path": "tests/test_patch.py",
+          "start": 100,
+          "end": 143
+        },
+        "result_len": 3369
+      },
+      {
+        "turn": 3,
+        "tool": "search_symbol",
+        "args": {
+          "name": "apply_hunks",
+          "file_glob": "src/atomic_forge/*.py"
+        },
+        "result_len": 477
+      },
+      {
+        "turn": 4,
+        "tool": "view_file",
+        "args": {
+          "path": "src/atomic_forge/patch.py",
+          "start": 377,
+          "end": 437
+        },
+        "result_len": 4220
+      },
+      {
+        "turn": 5,
+        "tool": "search_symbol",
+        "args": {
+          "name": "validate_hunk_disjointness",
+          "file_glob": "src/atomic_forge/*.py"
+        },
+        "result_len": 478
+      },
+      {
+        "turn": 6,
+        "tool": "view_file",
+        "args": {
+          "path": "src/atomic_forge/patch.py",
+          "start": 352,
+          "end": 376
+        },
+        "result_len": 2223
+      },
+      {
+        "turn": 7,
+        "tool": "callers",
+        "args": {
+          "symbol": "validate_hunk_disjointness"
+        },
+        "result_len": 421
+      },
+      {
+        "turn": 8,
+        "tool": "search_symbol",
+        "args": {
+          "name": "_locate_hunk",
+          "file_glob": "src/atomic_forge/*.py"
+        },
+        "result_len": 473
+      },
+      {
+        "turn": 9,
+        "tool": "view_file",
+        "args": {
+          "path": "src/atomic_forge/patch.py",
+          "start": 303,
+          "end": 326
+        },
+        "result_len": 2020
+      },
+      {
+        "turn": 10,
+        "tool": "edit_file",
+        "args": {
+          "path": "src/atomic_forge/patch.py",
+          "old_string": "def validate_hunk_disjointness(outcomes: List[HunkOutcome]) -> List[HunkOutcome]:\n    \"\"\"Given outcomes that have already been located (status == APPLIED,\n    span set against the ORIGINAL content), return the subset whose span\n    overlaps another's. Called as a preflight in `apply_hunks` BEFORE any\n    text is rewritten \u2014 fails fast instead of letting one hunk's\n    application silently corrupt what another hunk's application already\n    wrote (or is about to write).\"\"\"\n    located = [o for o in outcomes if o.span is not None]\n    located.sort(key=lambda o: o.span[0])\n    conflicting_ids: set[int] = set()\n    # Spans are sorted by start offset, so any span that overlaps an\n    # earlier one must overlap its immediate predecessor too \u2014 comparing\n    # each span only against the one just before it is therefore\n    # sufficient to catch every overlap.\n    for a, b in zip(located, located[1:]):\n        if a.span[1] > b.span[0]:  # a's end is past b's start -> overlap\n            conflicting_ids.add(id(a))\n            conflicting_ids.add(id(b))\n    return [o for o in outcomes if id(o) in conflicting_ids]",
+          "new_string": "def validate_hunk_disjointness(outcomes: List[HunkOutcome]) -> List[HunkOutcome]:\n    \"\"\"Given outcomes that have already been located (status == APPLIED,\n    span set against the ORIGINAL content), return the subset whose span\n    overlaps another's. Called as a preflight in `apply_hunks` BEFORE any\n    text is rewritten \u2014 fails fast instead of letting one hunk's\n    application silently corrupt what another hunk's application already\n    wrote (or is about to write).\"\"\"\n    located = [o for o in outcomes if o.span is not None]\n    located.sort(key=lambda o: o.span[0])\n    conflicting_ids: set[int] = set()\n    # Use a running-max sweep-line: track the maximum end position seen so\n    # far. If a span's start is less than the running max end, it overlaps\n    # with some previous span (not necessarily the immediate predecessor).\n    # This correctly handles containment and straddle cases that pairwise\n    # adjacent comparison would miss.\n    max_end = -1\n    max_end_outcome = None\n    for o in located:\n        start, end = o.span\n        if start < max_end:\n            # This span overlaps with the span that set max_end\n            conflicting_ids.add(id(o))\n            if max_end_outcome is not None:\n                conflicting_ids.add(id(max_end_outcome))\n        if end > max_end:\n            max_end = end\n            max_end_outcome = o\n    return [o for o in outcomes if id(o) in conflicting_ids]"
+        },
+        "result_len": 73
+      },
+      {
+        "turn": 11,
+        "tool": "run_tests",
+        "args": {},
+        "result_len": 110
+      }
+    ],
+    "cie_tools_exposed": 7,
+    "tools_exposed": 9,
+    "wall_seconds": 62.5,
+    "final_test_pass": true,
+    "final_test_tail": "..............                                                           [100%]\n14 passed in 0.11s",
+    "total_tokens": 82965
+  },
+  "no_cie": {
+    "turns": 22,
+    "llm_calls": 22,
+    "prompt_tokens": 222920,
+    "completion_tokens": 1289,
+    "tool_calls": 22,
+    "tool_log": [
+      {
+        "turn": 1,
+        "tool": "list_dir",
+        "args": {
+          "path": "."
+        },
+        "result_len": 76
+      },
+      {
+        "turn": 2,
+        "tool": "read_file",
+        "args": {
+          "path": "tests/test_patch.py"
+        },
+        "result_len": 5923
+      },
+      {
+        "turn": 3,
+        "tool": "list_dir",
+        "args": {
+          "path": "src"
+        },
+        "result_len": 14
+      },
+      {
+        "turn": 4,
+        "tool": "list_dir",
+        "args": {
+          "path": "src/atomic_forge"
+        },
+        "result_len": 373
+      },
+      {
+        "turn": 5,
+        "tool": "read_file",
+        "args": {
+          "path": "src/atomic_forge/patch.py"
+        },
+        "result_len": 24538
+      },
+      {
+        "turn": 6,
+        "tool": "read_file",
+        "args": {
+          "path": "src/atomic_forge/patch.py"
+        },
+        "result_len": 24538
+      },
+      {
+        "turn": 7,
+        "tool": "grep",
+        "args": {
+          "pattern": "def validate_hunk_disjointness",
+          "path": "src/atomic_forge/patch.py"
+        },
+        "result_len": 85
+      },
+      {
+        "turn": 8,
+        "tool": "read_file",
+        "args": {
+          "path": "src/atomic_forge/patch.py"
+        },
+        "result_len": 24538
+      },
+      {
+        "turn": 9,
+        "tool": "read_file",
+        "args": {
+          "path": "src/atomic_forge/patch.py"
+        },
+        "result_len": 24538
+      },
+      {
+        "turn": 10,
+        "tool": "run_tests",
+        "args": {},
+        "result_len": 896
+      },
+      {
+        "turn": 11,
+        "tool": "read_file",
+        "args": {
+          "path": "src/atomic_forge/patch.py"
+        },
+        "result_len": 24538
+      },
+      {
+        "turn": 12,
+        "tool": "run_tests",
+        "args": {},
+        "result_len": 896
+      },
+      {
+        "turn": 13,
+        "tool": "edit_file",
+        "args": {
+          "path": "src/atomic_forge/patch.py",
+          "old_string": "def validate_hunk_disjointness(outcomes: List[HunkOutcome]) -> List[HunkOutcome]:",
+          "new_string": "def validate_hunk_disjointness(outcomes: List[HunkOutcome]) -> List[HunkOutcome]:\n    # DEBUG\n    print(f\"validate_hunk_disjointness called with {len(outcomes)} outcomes\")\n    for o in outcomes:\n        if o.offset is not None:\n            print(f\"  hunk {o.hunk.index}: offset={o.offset}, search_len={len(o.hunk.search)}\")"
+        },
+        "result_len": 73
+      },
+      {
+        "turn": 14,
+        "tool": "run_tests",
+        "args": {},
+        "result_len": 1251
+      },
+      {
+        "turn": 15,
+        "tool": "grep",
+        "args": {
+          "pattern": "class HunkOutcome",
+          "path": "src/atomic_forge/patch.py"
+        },
+        "result_len": 22
+      },
+      {
+        "turn": 16,
+        "tool": "read_file",
+        "args": {
+          "path": "src/atomic_forge/patch.py"
+        },
+        "result_len": 24810
+      },
+      {
+        "turn": 17,
+        "tool": "read_file",
+        "args": {
+          "path": "src/atomic_forge/patch.py"
+        },
+        "result_len": 24810
+      },
+      {
+        "turn": 18,
+        "tool": "grep",
+        "args": {
+          "path": "src/atomic_forge/patch.py",
+          "pattern": "class HunkOutcome:"
+        },
+        "result_len": 22
+      },
+      {
+        "turn": 19,
+        "tool": "grep",
+        "args": {
+          "path": "src/atomic_forge/patch.py",
+          "pattern": "class HunkOutcome:"
+        },
+        "result_len": 22
+      },
+      {
+        "turn": 20,
+        "tool": "grep",
+        "args": {
+          "path": "src/atomic_forge/patch.py",
+          "pattern": "offset"
+        },
+        "result_len": 883
+      },
+      {
+        "turn": 21,
+        "tool": "grep",
+        "args": {
+          "path": "src/atomic_forge/patch.py",
+          "pattern": "class HunkOutcome"
+        },
+        "result_len": 22
+      },
+      {
+        "turn": 22,
+        "tool": "read_file",
+        "args": {
+          "path": "src/atomic_forge/patch.py"
+        },
+        "result_len": 24810
+      }
+    ],
+    "tools_exposed": 5,
+    "wall_seconds": 51.3,
+    "final_test_pass": false,
+    "final_test_tail": "FAILED tests/test_patch.py::test_marker_length_tolerance - AttributeError: 'H...\nFAILED tests/test_patch.py::test_crlf_fallback - AttributeError: 'HunkOutcome...\nFAILED tests/test_patch.py::test_line_number_prefix_stripped_as_last_resort\nFAILED tests/test_patch.py::test_nested_then_straddling_hunks_all_conflict - ...\nFAILED tests/test_patch.py::test_straddler_not_flagged_when_truly_disjoint - ...\n11 failed, 3 passed in 0.25s",
+    "total_tokens": 224209
+  }
+}

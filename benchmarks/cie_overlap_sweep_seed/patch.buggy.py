@@ -359,29 +359,14 @@ def validate_hunk_disjointness(outcomes: List[HunkOutcome]) -> List[HunkOutcome]
     located = [o for o in outcomes if o.span is not None]
     located.sort(key=lambda o: o.span[0])
     conflicting_ids: set[int] = set()
-    # Sweep-line over start-sorted spans: track the farthest end ("running
-    # max end") seen so far and the outcome that produced it. A span
-    # conflicts iff it starts strictly before that running max end.
-    #
-    # This is NOT a pairwise-adjacent check (``for a, b in zip(located,
-    # located[1:])``). The adjacent-only form is mathematically wrong for the
-    # interval-containment case: given spans A=[0,14] (a container), B=[2,4]
-    # (nested inside A), C=[7,14] (straddles A but starts after B ends), the
-    # adjacent pairs are (A,B) -> overlap caught, and (B,C) -> 4 > 7 is false,
-    # so C is never compared against A and slips through as "clean" even
-    # though C.start=7 < A.end=14. The running-max form compares every span
-    # against the widest still-open interval, so C is caught. Asserted in
-    # test_patch.py::test_nested_then_straddling_hunks_all_conflict.
-    max_end = -1
-    max_end_owner = None
-    for o in located:
-        if o.span[0] < max_end:
-            conflicting_ids.add(id(o))
-            if max_end_owner is not None:
-                conflicting_ids.add(id(max_end_owner))
-        if o.span[1] > max_end:
-            max_end = o.span[1]
-            max_end_owner = o
+    # Spans are sorted by start offset, so any span that overlaps an
+    # earlier one must overlap its immediate predecessor too — comparing
+    # each span only against the one just before it is therefore
+    # sufficient to catch every overlap.
+    for a, b in zip(located, located[1:]):
+        if a.span[1] > b.span[0]:  # a's end is past b's start -> overlap
+            conflicting_ids.add(id(a))
+            conflicting_ids.add(id(b))
     return [o for o in outcomes if id(o) in conflicting_ids]
 
 

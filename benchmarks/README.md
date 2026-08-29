@@ -4,6 +4,14 @@ Methodology and harness for validating the claims in the README's "Why
 this exists" section — every result is produced by actually running
 `atomic-forge` against a live LLM endpoint; nothing here is simulated.
 
+> **Cross-tool benchmark (separate from the cases below):**
+> [`docs/cie-graph-bugfix-benchmark.md`](../docs/cie-graph-bugfix-benchmark.md)
+> + [`measure_cie_graph_benefit.py`](measure_cie_graph_benefit.py) measure a
+> *different* question — does handing a tool-calling agent a real code graph
+> (CIE over MCP) change the token/turn/success cost of fixing one
+> mathematically-subtle bug vs. plain filesystem tools. It is not the
+> atomic-forge repair loop; the cases below are.
+
 ## Methodology
 
 Each case in `cases/<id>/` is a **real merged bug fix** from a small,
