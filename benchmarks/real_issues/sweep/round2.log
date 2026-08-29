@@ -1,0 +1,280 @@
+
+##### arrow-py/arrow: 9 candidate(s)
+=== arrow-py/arrow#1191 — IndexError in DateTimeParser.parse
+  oracle_reject (68.3s)
+  cleaned /tmp/forge_fix/arrow-1191 (76M)
+=== arrow-py/arrow#1159 — error in Time transform of 9999-12-31
+  oracle_reject (90.3s)
+  cleaned /tmp/forge_fix/arrow-1159 (76M)
+-- batch done for arrow-py/arrow (2/9); pruning docker [2/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== arrow-py/arrow#1153 — incorrect tzinfo when arrow.get()
+  oracle_reject (68.3s)
+  cleaned /tmp/forge_fix/arrow-1153 (76M)
+=== arrow-py/arrow#1341 — dehumanize() silently returns wrong times for fractional inputs ("1.5 
+  repair_fail (56.7s)
+  cleaned /tmp/forge_fix/arrow-1341 (65M)
+-- batch done for arrow-py/arrow (4/9); pruning docker [4/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== arrow-py/arrow#1278 — dehumanize() silently ignores negative time values, returning wrong re
+  repair_fail (54.3s)
+  cleaned /tmp/forge_fix/arrow-1278 (65M)
+=== arrow-py/arrow#1210 — Type hints for `Arrow.interval` should show `Arrow` as possible type f
+  repair_fail (74.9s)
+  cleaned /tmp/forge_fix/arrow-1210 (65M)
+-- batch done for arrow-py/arrow (6/9); pruning docker [6/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== arrow-py/arrow#1209 — Arrow shift method is not handling DST properly
+  repair_fail (80.6s)
+  cleaned /tmp/forge_fix/arrow-1209 (65M)
+=== arrow-py/arrow#1170 — incorrect behavior WRT daylight savings for shift/adding timedelta
+  repair_fail (57.1s)
+  cleaned /tmp/forge_fix/arrow-1170 (65M)
+-- batch done for arrow-py/arrow (8/9); pruning docker [8/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== arrow-py/arrow#1173 — 1.3.0: pytest fails in multiple units
+  oracle_reject (61.7s)
+  cleaned /tmp/forge_fix/arrow-1173 (76M)
+-- batch done for arrow-py/arrow (9/9); pruning docker [9/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+
+##### psf/black: 6 candidate(s)
+=== psf/black#5214 — Leaf.bracket_depth not initialized
+  repair_fail (367.8s)
+  cleaned /tmp/forge_fix/black-5214 (76M)
+=== psf/black#5260 — `ruff:ignore` should be processed as a pragma in `contains_pragma_comm
+  repair_fail (236.7s)
+  cleaned /tmp/forge_fix/black-5260 (77M)
+-- batch done for psf/black (2/6); pruning docker [11/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== psf/black#4420 — Newlines between classes do not get added when the last method of one 
+  repair_fail (397.9s)
+  cleaned /tmp/forge_fix/black-4420 (78M)
+=== psf/black#4249 — Bug hazard - multiple strings given same indentation
+  oracle_reject (68.7s)
+  cleaned /tmp/forge_fix/black-4249 (88M)
+-- batch done for psf/black (4/6); pruning docker [13/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== psf/black#5328 — Formatting a dictionary with a long string and type ignore fails on --
+  repair_fail (314.7s)
+  cleaned /tmp/forge_fix/black-5328 (77M)
+=== psf/black#4411 — global config not possible if project contains a `pyproject.toml`
+  repair_fail (371.9s)
+  cleaned /tmp/forge_fix/black-4411 (78M)
+-- batch done for psf/black (6/6); pruning docker [15/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+
+##### agronholm/anyio: 8 candidate(s)
+=== agronholm/anyio#1094 — CancelledError leaks from connect_tcp happy eyeballs on Python 3.14
+  oracle_reject (62.2s)
+  cleaned /tmp/forge_fix/anyio-1094 (77M)
+=== agronholm/anyio#1250 — asyncio backend: race in SocketStream.aclose() — transport.abort() rai
+  oracle_reject (56.1s)
+  cleaned /tmp/forge_fix/anyio-1250 (77M)
+-- batch done for agronholm/anyio (2/8); pruning docker [17/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== agronholm/anyio#1273 — concurrent anyio.aclose_forcefully fails to block until socket is clos
+  repair_fail (64.3s)
+  cleaned /tmp/forge_fix/anyio-1273 (66M)
+=== agronholm/anyio#1239 — `BrokenResourceError` is the wrong error for a temporary Windows UDP r
+  oracle_reject (75.8s)
+  cleaned /tmp/forge_fix/anyio-1239 (77M)
+-- batch done for agronholm/anyio (4/8); pruning docker [19/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== agronholm/anyio#1288 — UNIXSocket.aclose and _TrioSocketMixin.aclose in cancelled scope does 
+  oracle_reject (66.1s)
+  cleaned /tmp/forge_fix/anyio-1288 (77M)
+=== agronholm/anyio#1237 — UDPSocket.aclose() hangs on Windows when a send is in flight (regressi
+  oracle_reject (67.2s)
+  cleaned /tmp/forge_fix/anyio-1237 (77M)
+-- batch done for agronholm/anyio (6/8); pruning docker [21/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== agronholm/anyio#1014 — `test_raise_baseexception_from_task` occasionally deadlocks
+  oracle_reject (61.3s)
+  cleaned /tmp/forge_fix/anyio-1014 (77M)
+=== agronholm/anyio#1070 — `TaskGroup` doesn't raise cancelled when it should on asyncio
+  oracle_reject (65.1s)
+  cleaned /tmp/forge_fix/anyio-1070 (77M)
+-- batch done for agronholm/anyio (8/8); pruning docker [23/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+
+##### tqdm/tqdm: 4 candidate(s)
+=== tqdm/tqdm#1801 — contrib.concurrent.process_map raises ValueError with unsized iterable
+  repair_fail (82.4s)
+  cleaned /tmp/forge_fix/tqdm-1801 (60M)
+=== tqdm/tqdm#1803 — GroupBy.progress_map always raises AttributeError: pandas has no Group
+  repair_fail (74.7s)
+  cleaned /tmp/forge_fix/tqdm-1803 (60M)
+-- batch done for tqdm/tqdm (2/4); pruning docker [25/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== tqdm/tqdm#1798 — DataFrame.progress_map shows wrong total (number of columns) and freez
+  repair_fail (70.3s)
+  cleaned /tmp/forge_fix/tqdm-1798 (60M)
+=== tqdm/tqdm#1683 — pbar.n shows different behaviors during debugging and running
+  oracle_reject (57.6s)
+  cleaned /tmp/forge_fix/tqdm-1683 (71M)
+-- batch done for tqdm/tqdm (4/4); pruning docker [27/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+
+##### Delgan/loguru: 4 candidate(s)
+=== Delgan/loguru#1502 — Out-of-range duration strings for `rotation` / `retention` leak `Overf
+  repair_fail (570.0s)
+  cleaned /tmp/forge_fix/loguru-1502 (371M)
+=== Delgan/loguru#1452 — TypeError in _better_exceptions on Python 3.14: tb_lineno is None for 
+  oracle_reject (280.5s)
+  cleaned /tmp/forge_fix/loguru-1452 (413M)
+-- batch done for Delgan/loguru (2/4); pruning docker [29/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== Delgan/loguru#1501 — `{time:x}` is incorrect for negative timestamps due to toward-zero tru
+  pr_raised -> https://github.com/Delgan/loguru/pull/1505 (511.6s)
+  cleaned /tmp/forge_fix/loguru-1501 (370M)
+=== Delgan/loguru#1503 — Exceptions raised by an async generator while handling `athrow()` bypa
+  repair_fail (300.0s)
+  cleaned /tmp/forge_fix/loguru-1503 (414M)
+-- batch done for Delgan/loguru (4/4); pruning docker [31/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+
+##### python-babel/babel: 8 candidate(s)
+=== python-babel/babel#1209 — Unhandled ValueError raised in read_po
+  repair_fail (375.5s)
+  cleaned /tmp/forge_fix/babel-1209 (443M)
+=== python-babel/babel#1190 — `pybabel extract` crashes when it encounters a byte string
+  repair_fail (289.2s)
+  cleaned /tmp/forge_fix/babel-1190 (443M)
+-- batch done for python-babel/babel (2/8); pruning docker [33/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== python-babel/babel#1216 — JInja extraction fails silently without error if there's an unrecogniz
+  oracle_reject (144.5s)
+  cleaned /tmp/forge_fix/babel-1216 (459M)
+=== python-babel/babel#1266 — Over-long msgstr not line wrapped when setting `--width`
+  oracle_reject (149.4s)
+  cleaned /tmp/forge_fix/babel-1266 (459M)
+-- batch done for python-babel/babel (4/8); pruning docker [35/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== python-babel/babel#1260 — America/Indiana/Indianapolis timezone does not display correctly
+  oracle_reject (156.4s)
+  cleaned /tmp/forge_fix/babel-1260 (459M)
+=== python-babel/babel#1236 — Babel fails to handle C locale properly
+  oracle_reject (163.9s)
+  cleaned /tmp/forge_fix/babel-1236 (459M)
+-- batch done for python-babel/babel (6/8); pruning docker [37/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== python-babel/babel#1219 — Exception raised if the revision date is blank
+  pr_raised -> https://github.com/python-babel/babel/pull/1333 (212.9s)
+  cleaned /tmp/forge_fix/babel-1219 (443M)
+=== python-babel/babel#1211 — symbolic links not followed during extract
+  repair_fail (160.0s)
+  cleaned /tmp/forge_fix/babel-1211 (459M)
+-- batch done for python-babel/babel (8/8); pruning docker [39/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+
+##### jd/tenacity: 6 candidate(s)
+=== jd/tenacity#529 — retry_if_not_exception_type swallows asyncio.CancelledError
+  oracle_reject (61.8s)
+  cleaned /tmp/forge_fix/tenacity-529 (70M)
+=== jd/tenacity#531 — Not able to log "retry_success", only if retry was triggered
+  pr_raised -> https://github.com/jd/tenacity/pull/704 (196.7s)
+  cleaned /tmp/forge_fix/tenacity-531 (58M)
+-- batch done for jd/tenacity (2/6); pruning docker [41/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== jd/tenacity#521 — [Query] How to propagate the underlying assertion error message from t
+  oracle_reject (69.1s)
+  cleaned /tmp/forge_fix/tenacity-521 (70M)
+=== jd/tenacity#534 — Incorrect exception raised with two retrying blocks in function
+  oracle_reject (56.8s)
+  cleaned /tmp/forge_fix/tenacity-534 (70M)
+-- batch done for jd/tenacity (4/6); pruning docker [43/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== jd/tenacity#507 — Statistics can be incorrectly initialized inside Temporal contexts
+  repair_fail (76.1s)
+  cleaned /tmp/forge_fix/tenacity-507 (70M)
+=== jd/tenacity#504 — [FEATURE REQUEST] warn when retried code is not idempotent
+  oracle_reject (62.8s)
+  cleaned /tmp/forge_fix/tenacity-504 (70M)
+-- batch done for jd/tenacity (6/6); pruning docker [45/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+
+##### benoitc/gunicorn: 7 candidate(s)
+=== benoitc/gunicorn#3410 — Gunicorn injects "HTTP/1.1 500 Internal Server Error" into body when w
+  oracle_reject (159.5s)
+  cleaned /tmp/forge_fix/gunicorn-3410 (92M)
+=== benoitc/gunicorn#3370 — Incorrect Handling of Absolute-Form Request-Target Authority
+  oracle_reject (167.2s)
+  cleaned /tmp/forge_fix/gunicorn-3370 (92M)
+-- batch done for benoitc/gunicorn (2/7); pruning docker [47/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== benoitc/gunicorn#3334 — Slow request and not reading request body causes ConnectionResetError 
+  oracle_reject (111.2s)
+  cleaned /tmp/forge_fix/gunicorn-3334 (92M)
+=== benoitc/gunicorn#3209 —  "capture_output" fails when using "logconfig_dict" for logging config
+  bootstrap_fail (83.5s)
+  cleaned /tmp/forge_fix/gunicorn-3209 (6.9M)
+-- batch done for benoitc/gunicorn (4/7); pruning docker [49/50 total attempted]
+  $ docker container prune -f -> Total reclaimed space: 0B
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== benoitc/gunicorn#3364 — Gunicorn incorrectly strips certain characters from `transfer-coding`s
+
+##### benoitc/gunicorn: 3 candidate(s)
+=== benoitc/gunicorn#3364 — Gunicorn incorrectly strips certain characters from `transfer-coding`s
+  repair_fail (589.5s)
+  cleaned /tmp/forge_fix/gunicorn-3364 (25M)
+=== benoitc/gunicorn#3371 — Gunicorn incorrectly accepts NUL within URIs
+  repair_fail (589.2s)
+  cleaned /tmp/forge_fix/gunicorn-3371 (25M)
+-- batch done for benoitc/gunicorn (2/3); pruning docker [2/70 total attempted]
+  $ docker container prune -f -> Deleted Containers:
+eaa7b5155711fdae9f5519b51ca7daf3f24b1bfc0df16af9c78db4053f3bc4a9
+65913d7e83cc2e98647ee5e9dd3eaab5011
+  $ docker volume prune -f -> Total reclaimed space: 0B
+=== benoitc/gunicorn#3383 — pidfile may cause  the process to fail to start properly
+  repair_fail (612.9s)
+  cleaned /tmp/forge_fix/gunicorn-3383 (25M)
+-- batch done for benoitc/gunicorn (3/3); pruning docker [3/70 total attempted]
+  $ docker container prune -f -> Deleted Containers:
+88283aa94939cc2c15dc0084240e5a5b389fab5632d912521aebc3fd15e2b1ae
+
+Total reclaimed space: 24.11MB
+  $ docker volume prune -f -> Total reclaimed space: 0B
+
+##### python-poetry/cleo: 2 candidate(s)
+=== python-poetry/cleo#320 — Misleading CLI error message: 'The command "env" does not exist.'
+  oracle_reject (131.2s)
+  cleaned /tmp/forge_fix/cleo-320 (70M)
+=== python-poetry/cleo#386 — PyPy3.10: tests/ui/test_exception_trace.py::test_render_debug_better_e
+  bootstrap_fail (92.4s)
+  cleaned /tmp/forge_fix/cleo-386 (1.4M)
+-- batch done for python-poetry/cleo (2/2); pruning docker [5/70 total attempted]
+  $ docker container prune -f -> Deleted Containers:
+5924a9c970e2d574660dcaf0df8aaab89932c9b2965cc193f857c0341bb77fc1
+c9482252d4398a8d1e9703b252d3611b03b
+  $ docker volume prune -f -> Total reclaimed space: 0B
+
+##### encode/httpcore: 3 candidate(s)
+=== encode/httpcore#1082 — HTTP/2 large request body can fail with negative flow-control window
+  oracle_reject (955.6s)
+  cleaned /tmp/forge_fix/httpcore-1082 (773M)
+=== encode/httpcore#1063 — When using httpx in a sync setting, we noticed that host names with tr

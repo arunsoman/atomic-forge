@@ -52,6 +52,19 @@ def all_stacks() -> List[RepoStack]:
     return list(_registry.values())
 
 
+def weak_matches(root: Path) -> set[str]:
+    """Names of registered stacks whose `detect()` is true but only via a
+    weak, generic signal (currently: `_CppStack.is_weak_match` — a bare
+    Makefile with no CMake/Autotools markers). Callers disambiguating an
+    ecosystem tie (e.g. bootstrap.py's base-image picker) can drop these
+    before deciding "ambiguous" — a stack with no `is_weak_match` is never
+    weak (RepoStack doesn't require the method; only stacks whose own
+    detect() has a generic-file false-positive risk need to define it)."""
+    root = Path(root)
+    return {s.name for s in all_stacks()
+            if s.detect(root) and getattr(s, "is_weak_match", lambda _r: False)(root)}
+
+
 # --------------------------------------------------------------- python ----
 
 class _PythonStack:
@@ -342,6 +355,18 @@ class _CppStack:
 
     def docker_image(self, root: Path) -> Optional[str]:
         return "gcc:14" if self.detect(root) else None
+
+    def is_weak_match(self, root: Path) -> bool:
+        """True when this stack's ONLY signal is a bare Makefile/GNUmakefile
+        with no CMake or Autotools markers. A generic Makefile is not a
+        strong ecosystem signal — `make test`/`make lint` dev-convenience
+        Makefiles are routine in Python/Node/Go repos that have nothing to
+        do with C/C++ (confirmed on benoitc/gunicorn, whose Makefile sits
+        next to a pyproject.toml). Callers doing ecosystem disambiguation
+        (bootstrap.py's base-image picker) should not let this manufacture
+        a false tie against another stack's real manifest match."""
+        return (self.detect(root) and not self._is_cmake(root)
+                and not self._is_autotools(root))
 
 
 register(_PythonStack())

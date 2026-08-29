@@ -29,6 +29,7 @@ effect in forge; every other step is local.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -122,25 +123,36 @@ def gh_login() -> str:
 
 
 def ensure_fork(project_dir, upstream: str) -> tuple[str, str]:
-    """Make sure the authenticated user has a fork of `upstream` (owner/repo)
-    on GitHub, and that a local git remote named `fork` points at it. Returns
-    (login, fork_url). NEVER pushes to `origin` — `origin` is the cloned
-    upstream and is fetch-only; all pushes go to the `fork` remote."""
+    """Make sure a fork of `upstream` (owner/repo) exists on GitHub, and that
+    a local git remote named `fork` points at it. Returns (owner, fork_url).
+    NEVER pushes to `origin` — `origin` is the cloned upstream and is
+    fetch-only; all pushes go to the `fork` remote.
+
+    By default the fork lives under the authenticated `gh` user. Set
+    FORGE_FORK_ORG to fork into an org instead (e.g. so every PR forge raises
+    comes from one maintained org account rather than scattering forks across
+    whichever personal account happened to run the fix) — the currently
+    authenticated `gh` session still needs admin rights on that org for the
+    fork+push to work; PR *authorship* still follows the `gh` token, not the
+    fork owner."""
     project_dir = Path(project_dir)
-    login = gh_login()
+    org = os.environ.get("FORGE_FORK_ORG", "").strip()
+    owner = org or gh_login()
     repo = upstream.split("/")[-1]
-    fork_url = f"https://github.com/{login}/{repo}.git"
+    fork_url = f"https://github.com/{owner}/{repo}.git"
     # Create the fork on GitHub if it doesn't already exist. `gh repo fork`
     # is idempotent enough; a non-zero exit here usually means it already
     # exists, which is fine — we just need the remote to point at it.
-    subprocess.run(["gh", "repo", "fork", upstream, "--clone=false"],
-                   cwd=str(project_dir), capture_output=True, text=True)
-    # Point a local `fork` remote at the user's fork (add or fix-up).
+    fork_cmd = ["gh", "repo", "fork", upstream, "--clone=false"]
+    if org:
+        fork_cmd += ["--org", org]
+    subprocess.run(fork_cmd, cwd=str(project_dir), capture_output=True, text=True)
+    # Point a local `fork` remote at the fork (add or fix-up).
     if _git(["remote", "get-url", "fork"], project_dir, check=False):
         _git(["remote", "set-url", "fork", fork_url], project_dir)
     else:
         _git(["remote", "add", "fork", fork_url], project_dir)
-    return login, fork_url
+    return owner, fork_url
 
 
 def raise_pr_via_fork(project_dir, *, upstream: str, title: str, body: str = "",
@@ -169,9 +181,38 @@ def raise_pr_via_fork(project_dir, *, upstream: str, title: str, body: str = "",
             f"git push fork {head} failed (fork={fork_url}): {push!r}")
     cmd = ["gh", "pr", "create", "--repo", upstream, "--head", f"{login}:{head}",
            "--base", base, "--title", title, "--body", body]
-    r = subprocess.run(cmd, cwd=str(project_dir), capture_output=True, text=True)
-    if r.returncode != 0:
-        raise RuntimeError(f"gh pr create failed: {(r.stderr or r.stdout).strip()}")
+    # Fresh forks race GraphQL: createPullRequest 403s until the fork is
+    # visible server-side. Retry a few times; refresh the fork between
+    # attempts (ensure_fork is idempotent) so a silently-failed fork gets
+    # created rather than retried against nothing.
+    last_err = ""
+    for attempt in range(4):
+        r = subprocess.run(cmd, cwd=str(project_dir), capture_output=True, text=True)
+        if r.returncode == 0:
+            break
+        last_err = (r.stderr or r.stdout or "").strip()
+        if "correct permissions to execute `CreatePullRequest`" in last_err:
+            # upstream locks PRs to collaborators (anti-AI-slop gates et al);
+            # retries cannot help — say so, once, loudly
+            raise RuntimeError(
+                "upstream blocks PR creation for non-collaborators "
+                "(repo-level contributor gate — e.g. Textualize/rich's AI-slop "
+                "lockdown). The validated fix branch remains pushed to the fork; "
+                "an authorized account (collaborator status or approved path per "
+                "the repo's AI policy) must open it. gh said: " + last_err)
+        race = ("CreatePullRequest" in last_err
+                or "Head sha was not found" in last_err
+                or "field: headRepository" in last_err
+                or "Fork collab" in last_err)
+        if not race:
+            raise RuntimeError(f"gh pr create failed: {last_err}")
+        time.sleep(3 * (attempt + 1))
+        try:
+            ensure_fork(project_dir, upstream)
+        except Exception:
+            pass
+    else:
+        raise RuntimeError(f"gh pr create failed: {last_err}")
     url = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else ""
     return {"pr_url": url, "branch": head, "base": base, "upstream": upstream,
             "fork": fork_url, "title": title}
@@ -185,6 +226,28 @@ def default_branch_for(upstream: str) -> str:
     if r.returncode == 0 and r.stdout.strip():
         return r.stdout.strip()
     return "main"
+
+
+_FORGE_URL = "https://github.com/kannamma-labs/atomic-forge"
+
+
+def forge_footer() -> str:
+    """Canonical footer appended to every PR forge raises, anywhere.
+
+    Same wording, same badge, same hidden `<!-- atomic-forge:pr -->` marker
+    in every repo and under every fork account (`kannamma-labs` or
+    otherwise) — the point isn't decoration, it's that this exact marker
+    string is what makes the whole campaign trackable: `gh search prs --owner
+    kannamma-labs --match body "atomic-forge:pr"` (or GitHub's own search)
+    finds every forge-raised PR as one set, without depending on a `label`
+    we usually can't set on someone else's upstream repo."""
+    return (
+        "\n---\n"
+        "<!-- atomic-forge:pr -->\n"
+        f"[![Fixed by Forge](https://img.shields.io/badge/fixed_by-atomic--forge-6f42c1?logo=github)]({_FORGE_URL})\n\n"
+        f"🔨 Fixed by [Forge]({_FORGE_URL}) — an autonomous, test-driven "
+        "issue→PR repair engine (`atomic-forge fix <issue-url>`).\n"
+    )
 
 
 def summarize_repair_for_pr(report: dict, case_name: str = "") -> tuple[str, str]:
@@ -206,7 +269,7 @@ def summarize_repair_for_pr(report: dict, case_name: str = "") -> tuple[str, str
         "The regression test was generated and validated as an oracle by CIE "
         "(it fails on the pre-fix code and passes on the post-fix code), then "
         "forge's repair loop drove the fix against it. The full test suite is "
-        "green.\n\n"
-        "_Generated by `atomic-forge repair --raise-pr`._\n"
+        "green.\n"
+        + forge_footer()
     )
     return title, body

@@ -142,8 +142,11 @@ class MCPToolBackend:
                     r[k] = v[len(root):]
         return env
 
-    def _c(self, name, **kw):
-        return self._rel(self.bridge.call(name, **kw))
+    def _c(self, tool, **kw):
+        # first positional must not be called `name`: several MCP tools
+        # legitimately take a `name=` kwarg (search_symbol etc.) and the
+        # collision raised TypeError: got multiple values for 'name'
+        return self._rel(self.bridge.call(tool, **kw))
 
     # -- graph-backed reads --
     def view_file(self, path, start=1, end=VIEW_WINDOW):

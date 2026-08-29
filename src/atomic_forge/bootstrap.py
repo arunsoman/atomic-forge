@@ -26,7 +26,7 @@ from typing import Optional
 
 from .checkpoint import BootstrapVerdict, RunCheckpointer, new_run_id
 from . import docker_env
-from .stacks import detect_test_stack
+from .stacks import all_stacks, detect_test_stack, weak_matches
 from .sandbox import RunResult, run
 
 #: Exit codes meaning "the test runner ran to its end": 0 = passed,
@@ -185,102 +185,126 @@ def agentic_bootstrap(project_dir, llm, *, max_steps: int = 12,
                     "manifest_path": str(manifest_path)}
 
     base_image = _choose_base_image(llm, project_dir)
-    container = docker_env.get_or_create(project_dir, base_image)
+    container = docker_env.get_or_create(project_dir, base_image, fresh=True, user_root=True)
     if container is None:
         return _fail(BootstrapVerdict.UNSUPPORTED_ECOSYSTEM.value,
                      f"could not start a Docker sandbox ({base_image}) — is the "
                      "daemon reachable?")
 
-    last_good_image = base_image
-    steps = 0
-    started = time.monotonic()
-    messages = [
-        {"role": "system", "content": _CONFIGURATOR_SYSTEM},
-        {"role": "user", "content": f"# Repository (top level)\n{_tree_listing(project_dir)}\n\n"
-                                    "Propose the first setup command as JSON."},
-    ]
+    try:
+        steps = 0
+        # deterministic seed: give the scratch a runnable interpreter check and
+        # pytest BEFORE any LLM step — without this the agent spends its few
+        # capped steps doing installs it can fail at (`python` missing milked
+        # our caps on the first campaign runs)
+        for seed_cmd in ("python --version", "pip install pytest -q"):
+            seed = docker_env.exec_in(container, seed_cmd, cwd=project_dir, timeout=300)
+            steps += 1
+            transcript_path.open("a").write(json.dumps({
+                "step": steps, "cmd": seed_cmd, "exit_code": seed.exit_code,
+                "output": seed.full_output[:4000], "seed": True}) + "\n")
 
-    while steps < max_steps and (time.monotonic() - started) < wall_clock_s:
-        try:
-            reply = llm.chat(messages, temperature=0.0, max_tokens=400)
-        except Exception as e:  # noqa: BLE001 - LLM failure ends the loop, capped
-            return _fail(BootstrapVerdict.FAILED_AGENTIC.value,
-                         f"configurator LLM failed after {steps} steps: {e}",
-                         steps=steps, image=last_good_image)
-        steps += 1
-        proposal = _extract_json(reply)
-        if proposal is None or not proposal.get("cmd"):
-            messages.append({"role": "assistant", "content": (reply or "")[:500]})
-            messages.append({"role": "user",
-                             "content": "Malformed reply. Respond with ONLY the JSON "
-                                        "object: {\"cmd\": ..., \"why\": ..., \"done\": ..., "
-                                        "\"test_cmd\": ...}"})
-            continue
+        last_good_image = base_image
+        started = time.monotonic()
+        messages = [
+            {"role": "system", "content": _CONFIGURATOR_SYSTEM},
+            {"role": "user", "content": f"# Repository (top level)\n{_tree_listing(project_dir)}\n\n"
+                                        "Propose the first setup command as JSON."},
+        ]
 
-        cmd = str(proposal.get("cmd"))
-        result = docker_env.exec_in(container, cmd, cwd=project_dir,
-                                    timeout=per_step_timeout,
-                                    env={"CI": "true",
-                                         "DEBIAN_FRONTEND": "noninteractive"})
-        _log({"step": steps, "cmd": cmd, "exit_code": result.exit_code,
-              "timed_out": result.timed_out,
-              "output_tail": (result.full_output or "")[-2000:]})
-
-        # ---- verify the gate from inside the SAME container ---------------
-        stack = detect_test_stack(project_dir)
-        verify_cmd = stack.cmd if stack else proposal.get("test_cmd")
-        probe = None
-        if verify_cmd:
-            probe = docker_env.exec_in(container, verify_cmd, cwd=project_dir,
-                                       timeout=verify_timeout, env={"CI": "true"})
-            _log({"step": steps, "verify": verify_cmd, "exit_code": probe.exit_code,
-                  "timed_out": probe.timed_out,
-                  "output_tail": (probe.full_output or "")[-2000:]})
-        verified = (probe is not None and not probe.timed_out
-                    and probe.exit_code in _COMPLETED_EXIT_CODES
-                    and bool(probe.full_output.strip()))
-
-        if verified:
-            manifest = {"commit": head, "base_image": base_image,
-                        "image": last_good_image, "test_cmd": verify_cmd,
-                        "steps": steps}
-            manifest_path.write_text(json.dumps(manifest, indent=2))
-            return {"ok": True, "verdict": BootstrapVerdict.BOOTSTRAPPED.value,
-                    "detail": (f"agentic bootstrap succeeded in {steps} step(s); "
-                               f"verified test command: {verify_cmd}"),
-                    "cmd": verify_cmd, "steps": steps, "image": last_good_image,
-                    "transcript": str(transcript_path),
-                    "manifest_path": str(manifest_path)}
-
-        failed = result.timed_out or result.exit_code not in _COMPLETED_EXIT_CODES
-        if failed:
-            # rollback: re-create the scratch container from the last good
-            # SNAPSHOT IMAGE (no command replay — atomic per Repo2Run).
-            docker_env.kill(container)
-            container = docker_env.get_or_create(project_dir, last_good_image)
-            if container is None:
+        while steps < max_steps and (time.monotonic() - started) < wall_clock_s:
+            try:
+                reply = llm.chat(messages, temperature=0.0, max_tokens=400)
+            except Exception as e:  # noqa: BLE001 - LLM failure ends the loop, capped
                 return _fail(BootstrapVerdict.FAILED_AGENTIC.value,
-                             f"rollback to {last_good_image} failed after step {steps}",
+                             f"configurator LLM failed after {steps} steps: {e}",
                              steps=steps, image=last_good_image)
+            steps += 1
+            proposal = _extract_json(reply)
+            if proposal is None or not proposal.get("cmd"):
+                messages.append({"role": "assistant", "content": (reply or "")[:500]})
+                messages.append({"role": "user",
+                                 "content": "Malformed reply. Respond with ONLY the JSON "
+                                            "object: {\"cmd\": ..., \"why\": ..., \"done\": ..., "
+                                            "\"test_cmd\": ...}"})
+                continue
 
-        messages.append({"role": "assistant", "content": reply[:800]})
-        last_block = (probe or result).full_output or ""
-        tail = last_block[-4000:]
-        messages.append({"role": "user",
-                         "content": (f"# Last command\n{cmd}\n\n# Exit\n"
-                                     f"{probe.exit_code if probe else result.exit_code}"
-                                     f"{' (timed out)' if (probe and probe.timed_out) or result.timed_out else ''}"
-                                     f"\n\n# Output (tail)\n{tail}\n\n"
-                                     + ("Setup verified — you may stop." if verified
-                                        else "Not bootstrapped yet. Next setup command as JSON."))})
-        # bounded conversation: system + first user + last 10 messages
-        if len(messages) > 12:
-            messages[:] = [messages[0]] + messages[-10:]
+            cmd = str(proposal.get("cmd"))
+            result = docker_env.exec_in(container, cmd, cwd=project_dir,
+                                        timeout=per_step_timeout,
+                                        env={"CI": "true",
+                                             "DEBIAN_FRONTEND": "noninteractive"})
+            _log({"step": steps, "cmd": cmd, "exit_code": result.exit_code,
+                  "timed_out": result.timed_out,
+                  "output_tail": (result.full_output or "")[-2000:]})
 
-    return _fail(BootstrapVerdict.FAILED_AGENTIC.value,
-                 f"cap reached without a verified test run "
-                 f"(steps={steps}, wall={int(time.monotonic() - started)}s)",
-                 steps=steps, image=last_good_image)
+            # ---- verify the gate from inside the SAME container ---------------
+            stack = detect_test_stack(project_dir)
+            verify_cmd = stack.cmd if stack else proposal.get("test_cmd")
+            probe = None
+            if verify_cmd:
+                probe = docker_env.exec_in(container, verify_cmd, cwd=project_dir,
+                                           timeout=verify_timeout, env={"CI": "true"})
+                _log({"step": steps, "verify": verify_cmd, "exit_code": probe.exit_code,
+                      "timed_out": probe.timed_out,
+                      "output_tail": (probe.full_output or "")[-2000:]})
+            verified = (probe is not None and not probe.timed_out
+                        and probe.exit_code in _COMPLETED_EXIT_CODES
+                        and bool(probe.full_output.strip()))
+
+            if verified:
+                manifest = {"commit": head, "base_image": base_image,
+                            "image": last_good_image, "test_cmd": verify_cmd,
+                            "steps": steps}
+                manifest_path.write_text(json.dumps(manifest, indent=2))
+                return {"ok": True, "verdict": BootstrapVerdict.BOOTSTRAPPED.value,
+                        "detail": (f"agentic bootstrap succeeded in {steps} step(s); "
+                                   f"verified test command: {verify_cmd}"),
+                        "cmd": verify_cmd, "steps": steps, "image": last_good_image,
+                        "transcript": str(transcript_path),
+                        "manifest_path": str(manifest_path)}
+
+            failed = result.timed_out or result.exit_code not in _COMPLETED_EXIT_CODES
+            if failed:
+                # rollback: re-create the scratch container from the last good
+                # SNAPSHOT IMAGE (no command replay — atomic per Repo2Run).
+                docker_env.kill(container)
+                container = docker_env.get_or_create(project_dir, last_good_image, fresh=True, user_root=True)
+                if container is None:
+                    return _fail(BootstrapVerdict.FAILED_AGENTIC.value,
+                                 f"rollback to {last_good_image} failed after step {steps}",
+                                 steps=steps, image=last_good_image)
+
+            messages.append({"role": "assistant", "content": reply[:800]})
+            last_block = (probe or result).full_output or ""
+            tail = last_block[-4000:]
+            messages.append({"role": "user",
+                             "content": (f"# Last command\n{cmd}\n\n# Exit\n"
+                                         f"{probe.exit_code if probe else result.exit_code}"
+                                         f"{' (timed out)' if (probe and probe.timed_out) or result.timed_out else ''}"
+                                         f"\n\n# Output (tail)\n{tail}\n\n"
+                                         + ("Setup verified — you may stop." if verified
+                                            else "Not bootstrapped yet. Next setup command as JSON."))})
+            # bounded conversation: system + first user + last 10 messages
+            if len(messages) > 12:
+                messages[:] = [messages[0]] + messages[-10:]
+
+        return _fail(BootstrapVerdict.FAILED_AGENTIC.value,
+                     f"cap reached without a verified test run "
+                     f"(steps={steps}, wall={int(time.monotonic() - started)}s)",
+                     steps=steps, image=last_good_image)
+    finally:
+        # every exit above (success, LLM failure, cap exhaustion, a failed
+        # rollback) must not leave the scratch sandbox running — nothing
+        # downstream reuses this exact container (fix.py sets up its own
+        # host venv right after the gate passes), so leaking it here just
+        # leaks a few hundred MB of writable container layer per attempt.
+        # Confirmed the hard way: a 49-issue sweep left 7 `forge-test-*`
+        # containers running (400-500MB each) and drove the host to 100%
+        # disk. `container` may be None here (rollback's own get_or_create
+        # failing) — kill() is only called on a real handle.
+        if container:
+            docker_env.kill(container)
 
 
 def agentic_report_to_gate_report(report: dict) -> dict:
@@ -361,11 +385,50 @@ def run_bootstrap_gate(project_dir, *, timeout: int = 600, on_progress=None,
     return _record(False, verdict, detail, agentic.get("cmd"))
 
 
+def _detect_ecosystem_deterministic(project_dir: Path) -> Optional[str]:
+    """Marker-file detection (the same registry `detect_test_stack` uses)
+    picks the ecosystem when it's unambiguous — no LLM round trip needed.
+    Returns a `_BASE_IMAGE_MENU` key, or None when zero or more-than-one
+    stack's markers matched (genuinely ambiguous; let the LLM break the
+    tie).
+
+    A stack flagged `weak_matches` (currently: cpp-via-bare-Makefile-only)
+    is dropped from a tie BEFORE deciding ambiguity, as long as some other
+    stack still matches — confirmed necessary on benoitc/gunicorn, a pure
+    python repo whose dev-convenience Makefile made `_CppStack.detect()`
+    true alongside `_PythonStack`, manufacturing a false tie that degraded
+    to ubuntu:24.04 (no python/pip) via the LLM fallback below."""
+    if not project_dir.is_dir():
+        return None
+    matches = [stack.name for stack in all_stacks() if stack.detect(project_dir)]
+    if len(matches) > 1:
+        weak = weak_matches(project_dir)
+        stripped = [m for m in matches if m not in weak]
+        if stripped:
+            matches = stripped
+    if len(matches) == 1 and matches[0] in _BASE_IMAGE_MENU:
+        return matches[0]
+    return None
+
+
 def _choose_base_image(llm, project_dir: Path) -> str:
-    """One cheap constrained call: which sandbox image fits this repo?
-    Any failure or nonsense reply degrades to a generic Debian/Ubuntu base
-    that the configurator can apt-install from — never a free-form image
-    name a prompt could hallucinate."""
+    """Deterministic marker detection picks the image first: a repo with
+    an unambiguous `pyproject.toml`/`package.json`/`go.mod`/etc. gets its
+    matching image without ever asking the LLM. This used to always ask
+    the LLM first — a one-word reply that failed to parse (or just came
+    back wrong) silently degraded EVERY repo it couldn't classify to
+    `ubuntu:24.04`, which has no python/pip and starves the agent's step
+    budget on 127s before it can even apt-get one in.
+
+    The LLM is consulted only when the markers are ambiguous (none, or
+    more than one, matched); any failure or nonsense reply there still
+    degrades to a generic Debian/Ubuntu base the configurator can
+    apt-install from — never a free-form image name a prompt could
+    hallucinate."""
+    ecosystem = _detect_ecosystem_deterministic(project_dir)
+    if ecosystem is not None:
+        return _BASE_IMAGE_MENU[ecosystem]
+
     entries = sorted(
         k.name for k in project_dir.iterdir() if not k.name.startswith(".")
     ) if project_dir.is_dir() else []

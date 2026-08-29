@@ -168,7 +168,8 @@ def _mount_matches(name: str, project_dir: Path) -> bool:
     return result.returncode == 0 and "match" in result.stdout
 
 
-def get_or_create(project_dir: Path, image: str) -> Optional[str]:
+def get_or_create(project_dir: Path, image: str, *, fresh: bool = False,
+                   user_root: bool = False) -> Optional[str]:
     """Returns the running container name for project_dir's project, or
     None if Docker isn't usable at all (caller should fall back to a plain
     host run()). project_id is derived from project_dir's own basename —
@@ -176,7 +177,20 @@ def get_or_create(project_dir: Path, image: str) -> Optional[str]:
     convention,
     a stable 1:1 mapping to one absolute path; _mount_matches guards the
     general case where that assumption doesn't hold (see its own
-    docstring)."""
+    docstring).
+
+    `fresh=True` (R16c agentic bootstrap): ALWAYS remove and recreate the
+    container from the requested `image`, even when an existing container
+    for this project is running and mount-compatible. The default reuse
+    path serves the repair loop's persistent-container model; the agentic
+    scratch must start from its OWN chosen base image, never from a stale
+    container left by a previous probe.
+
+    `user_root=True` (R16c agentic scratch): run as ROOT and WITHOUT the
+    host docker-socket bind — the configurator must apt/pip-install, which
+    needs root, and the scratch is disposable, hard-capped, and never needs
+    Docker-outside-of-Docker. The repair-loop's persistent container keeps
+    the unprivileged user + DooD mount."""
     if not docker_available():
         return None
     project_dir = Path(project_dir).resolve()
@@ -185,24 +199,28 @@ def get_or_create(project_dir: Path, image: str) -> Optional[str]:
 
     with _project_lock(project_id):
         state = _inspect_state(name)
-        if state == "running" and _mount_matches(name, project_dir):
+        if not fresh and state == "running" and _mount_matches(name, project_dir):
             return name
-        if state is not None:
+        if state is not None or fresh:
             # Either exited/crashed from a prior run (unknown state,
             # don't blindly `docker start` it), or running but bind-
             # mounted at a different path than this project_dir (see
             # _mount_matches) — either way, remove and recreate clean.
+            # With fresh=True: also a mount-compatible RUNNING container
+            # is torn down — the requested base image must be honored.
             subprocess.run(["docker", "rm", "-f", name], capture_output=True, timeout=30)
 
         home_dir = _home_dir(project_id)
         uid, gid = os.getuid(), os.getgid()
-        run_cmd = [
-            "docker", "run", "-d", "--name", name,
-            "--user", f"{uid}:{gid}",
+        run_cmd = ["docker", "run", "-d", "--name", name]
+        if not user_root:
+            # repair-loop persistent container: non-root + DooD (SF)
+            run_cmd += ["--user", f"{uid}:{gid}",
+                        "-v", "/var/run/docker.sock:/var/run/docker.sock"]
+        run_cmd += [
             "-e", f"HOME={home_dir}",
             "-v", f"{project_dir}:{project_dir}",
             "-v", f"{home_dir}:{home_dir}",
-            "-v", "/var/run/docker.sock:/var/run/docker.sock",
             "-w", str(project_dir),
             image, "sleep", "infinity",
         ]

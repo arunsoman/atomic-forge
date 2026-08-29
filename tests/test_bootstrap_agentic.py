@@ -44,7 +44,7 @@ def fake_docker(monkeypatch):
     def fake_available():
         return True
 
-    def fake_get_or_create(project_dir, image):
+    def fake_get_or_create(project_dir, image, **kwargs):
         state["created"].append(image)
         state["last_created_with"] = image
         return f"ctr-{image.replace(':', '-')}"
@@ -88,12 +88,20 @@ def test_agentic_bootstrap_succeeds_and_writes_manifest(tmp_path, fake_docker):
     r = agentic_bootstrap(repo, llm)
     assert r["ok"] is True and r["verdict"] == "bootstrapped"
     assert "make test" in r["cmd"]
-    assert r["steps"] == 2
+    assert r["steps"] == 4  # 2 seed steps (python --version, pip install pytest) + 2 agent steps
     manifest = json.loads((repo / ".forge/bootstrap/manifest.json").read_text())
     assert manifest["test_cmd"] == "make test"
     lines = [json.loads(l) for l in (repo / ".forge/bootstrap/transcript.jsonl").read_text().splitlines()]
-    assert lines[0]["cmd"] == "make deps" and lines[0]["exit_code"] == 0
+    # first two lines are the deterministic seed steps; agent steps follow
+    assert lines[0]["cmd"] == "python --version" and lines[0]["seed"] is True
+    assert lines[1]["cmd"] == "pip install pytest -q" and lines[1]["seed"] is True
+    assert lines[2]["cmd"] == "make deps" and lines[2]["exit_code"] == 0
     assert any("verify" in l for l in lines)  # the probe is on the record
+    # regression: a successful run must not leave the scratch sandbox
+    # running — nothing downstream reuses this exact container, and a
+    # 49-issue real-world sweep leaked exactly this container (400-500MB
+    # each) until every one of them was killed by hand.
+    assert fake_docker["killed"] == [f"ctr-{fake_docker['created'][-1].replace(':', '-')}"]
 
 
 def test_agentic_bootstrap_cache_hit_skips_loop(tmp_path, fake_docker):
@@ -136,6 +144,9 @@ def test_caps_exhaustion_is_failed_agentic(tmp_path, fake_docker):
     assert r["ok"] is False and r["verdict"] == "failed_agentic"
     assert r["steps"] == 3
     assert len([l for l in (repo / ".forge/bootstrap/transcript.jsonl").read_text().splitlines()]) == 3
+    # regression: cap exhaustion is a plain function return, not an
+    # exception — easy to forget the `finally` covers it too.
+    assert fake_docker["killed"] == [f"ctr-{fake_docker['created'][-1].replace(':', '-')}"]
 
 
 def test_no_docker_is_unsupported_never_host(tmp_path, monkeypatch):
@@ -152,6 +163,63 @@ def test_base_image_menu_is_constrained(tmp_path):
                                 repo) == "python:3.12-slim"
     assert B._choose_base_image(FakeLLM([], ecosystem="total garbage <>"),
                                 repo) == "ubuntu:24.04"
+
+
+def test_base_image_deterministic_markers_skip_the_llm(tmp_path):
+    """An unambiguous marker file (pyproject.toml) must pick the image
+    WITHOUT ever consulting the LLM — regression for the bug where every
+    repo asked the LLM first, and a garbled/unparseable one-word reply
+    silently degraded a real python repo to ubuntu:24.04 (no python/pip
+    in the sandbox -> 127s -> step-budget exhaustion)."""
+    repo = tmp_path / "proj"
+    repo.mkdir()
+    (repo / "pyproject.toml").write_text("[project]\nname = 'x'\n")
+    llm = FakeLLM([], ecosystem="total garbage <>")  # would degrade to ubuntu if ever asked
+    assert B._choose_base_image(llm, repo) == "python:3.12-slim"
+    assert llm.calls == []
+
+
+def test_base_image_ambiguous_markers_fall_back_to_llm(tmp_path):
+    """More than one stack's markers present at once is genuinely
+    ambiguous (e.g. a python backend with a node frontend at the repo
+    root) — that's the one case the LLM should still be asked."""
+    repo = tmp_path / "proj"
+    repo.mkdir()
+    (repo / "pyproject.toml").write_text("[project]\nname = 'x'\n")
+    (repo / "package.json").write_text("{}\n")
+    llm = FakeLLM([], ecosystem="it is a python repo")
+    assert B._choose_base_image(llm, repo) == "python:3.12-slim"
+    assert len(llm.calls) == 1
+
+
+def test_base_image_bare_makefile_does_not_manufacture_ambiguity(tmp_path):
+    """Regression: benoitc/gunicorn (a pure python repo) ships a bare
+    Makefile for `make test`/`make lint` dev-convenience alongside its
+    pyproject.toml. Before this fix, `_CppStack.detect()` counted that
+    Makefile as a real cpp signal, tying against python and falling to
+    the LLM — which, on a garbled/unparseable reply, degraded a real
+    python repo to ubuntu:24.04 (no python/pip in the sandbox). A bare
+    Makefile with no CMake/Autotools markers must not out-vote a real
+    manifest match."""
+    repo = tmp_path / "proj"
+    repo.mkdir()
+    (repo / "pyproject.toml").write_text("[project]\nname = 'x'\n")
+    (repo / "Makefile").write_text("test:\n\tpytest\n")
+    llm = FakeLLM([], ecosystem="total garbage <>")  # would degrade to ubuntu if ever asked
+    assert B._choose_base_image(llm, repo) == "python:3.12-slim"
+    assert llm.calls == []
+
+
+def test_base_image_real_cmake_cpp_still_detected_alone(tmp_path):
+    """A genuine C/C++ repo (CMakeLists.txt, no competing manifest) must
+    still resolve to gcc:14 deterministically — the Makefile-weakening
+    rule above must not blunt real cpp detection."""
+    repo = tmp_path / "proj"
+    repo.mkdir()
+    (repo / "CMakeLists.txt").write_text("enable_testing()\n")
+    llm = FakeLLM([], ecosystem="total garbage <>")
+    assert B._choose_base_image(llm, repo) == "gcc:14"
+    assert llm.calls == []
 
 
 def test_gate_uses_agentic_fallback_when_enabled(tmp_path, fake_docker, monkeypatch):
