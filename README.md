@@ -280,7 +280,11 @@ simulated):
 
 Reproducible harness + seeds: [`benchmarks/cie_forge_realbugs/`](benchmarks/cie_forge_realbugs/)
 and [`benchmarks/measure_cie_graph_benefit.py`](benchmarks/measure_cie_graph_benefit.py).
-Raw results: [`benchmarks/results/`](benchmarks/results/).
+Raw results: [`benchmarks/results/`](benchmarks/results/). Short companion
+notes on the *why* behind these designs: [`docs/aside.md`](docs/aside.md).
+
+See also [`CONTRIBUTING.md`](CONTRIBUTING.md) for dev setup, the `AtomicTask`
+contract, and how to add a benchmark case.
 
 ```bash
 # point forge's repair loop at CIE (MCP code graph) + open the PR
