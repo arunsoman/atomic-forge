@@ -23,7 +23,7 @@ lower-priority than originally scoped.
   self-explanation improves correctness on suites *with* executable tests by
   up to 12 points, but shows near-zero gain without them. This is the key
   finding for this requirement: self-review only earns its keep when it's
-  grounded in actual execution, which makes [[req-execution-guided-repair]]
+  grounded in actual execution, which makes [[Environment-Bootstrap]]
   a prerequisite for this requirement rather than a parallel, independent
   feature.
 - **Revisit Self-Debugging with Self-Generated Tests**
@@ -59,7 +59,7 @@ standalone LLM judgment call.
    that way rather than adding an LLM-judged "does this resolve it" step
    that reintroduces the same unreliable-oracle risk from a different angle.
 3. **Layer, don't replace.** Any semantic check goes on top of the existing
-   execution-based gate (per [[req-execution-guided-repair]]), never as a
+   execution-based gate (per [[Environment-Bootstrap]]), never as a
    substitute for actually running the suite.
 
 ## Implementation plan
@@ -75,5 +75,5 @@ standalone LLM judgment call.
 - Once Phase 2's data shows the check reliably agrees with human judgment on a sample of `benchmarks/` cases, allow `unmappable`-but-suspicious results to trigger one extra repair attempt rather than shipping immediately.
 
 ## Related
-- [[req-critic-self-verification-gate]] — same underlying grounding problem
-- [[req-execution-guided-repair]] — the execution grounding this requirement depends on
+- [[Environment-Bootstrap]] — same underlying grounding problem
+- [[Environment-Bootstrap]] — the execution grounding this requirement depends on

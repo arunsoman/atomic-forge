@@ -40,7 +40,7 @@ parsers.
 - **Retrieval-Augmented Code Generation: A Survey with Focus on
   Repository-Level Approaches**
   ([arXiv:2510.04905](https://arxiv.org/abs/2510.04905)) — same survey as
-  [[req-repo-scale-context]]; the scaling-relevant dimension here is its
+  [[Environment-Bootstrap]]; the scaling-relevant dimension here is its
   treatment of retrieval-substrate tradeoffs (index-once-query-many vs.
   live-search) — directly analogous to forge's `GraphToolBackend` (indexed)
   vs. the `ripgrep` reference backend (live, no index).
@@ -98,5 +98,5 @@ of one-shot lookup (2503.22424). Both are incremental on top of the existing
 - Confirm `ripgrep_tool_backend.py` still functions as a documented escape hatch for repos too large to build the extended index, updating its docstring to mention the tradeoff explicitly.
 
 ## Related
-- [[req-repo-scale-context]] — same survey, core-capability angle
-- [[req-agent-computer-interface]] — navigation UX on top of this index
+- [[Environment-Bootstrap]] — same survey, core-capability angle
+- [[Environment-Bootstrap]] — navigation UX on top of this index

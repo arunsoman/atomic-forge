@@ -23,13 +23,13 @@ failing tests → extract signals → localize → sample K patches
    not the model's favorite. (`sandbox.py::_purge_pycache` exists because
    a write→retest cycle could otherwise evaluate a stale `.pyc` and
    silently corrupt this selection — root-caused and fixed; see
-   [[req-parallel-execution]].)
+   [[Environment-Bootstrap]].)
 5. **Blast-radius gate** — a static check that **rejects** a winning patch
    if it changes or removes a function/method signature while a caller
    outside the patched file still depends on it — the rejection is fed
    back into the next round's prompt rather than dropped.
 6. **Commit** — each accepted edit is auto-committed with a descriptive
-   message ([[req-auto-commit-messages]]); any round that makes things
+   message ([[Environment-Bootstrap]]); any round that makes things
    worse is reverted.
 
 ## Verdicts, not booleans
@@ -43,7 +43,7 @@ Every run's outcome is one of 7 checkpointed verdicts:
 
 - **Local** — direct subprocess execution with per-command timeouts.
 - **Docker** — per-project persistent container
-  ([[req-cli-ci-native]]); forge degrades gracefully with
+  ([[Environment-Bootstrap]]); forge degrades gracefully with
   `FORGE_DISABLE_DOCKER_TESTS=1`.
 - **[[Bootstrap-Gate]]** — before any of this runs against a cold clone,
   the environment is proven capable of running at least one test.
@@ -55,4 +55,4 @@ SWE-agent's agent-computer interface work ([arXiv:2405.15793](https://arxiv.org/
 Agentless's localize-repair decompose ([arXiv:2408.03310](https://arxiv.org/abs/2408.03310)),
 and self-refine loops ([arXiv:2303.17651](https://arxiv.org/abs/2303.17651)) —
 the full survey with what forge adopts and what it deliberately does not
-is in [[req-execution-guided-repair]] and [[req-critic-self-verification-gate]].
+is in [[Environment-Bootstrap]] and [[Environment-Bootstrap]].

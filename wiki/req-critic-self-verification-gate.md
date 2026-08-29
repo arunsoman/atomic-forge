@@ -39,7 +39,7 @@ gate over a learned critic model: the 2406.01297 survey documents exactly
 the failure mode (self-critique without external grounding) that a
 deterministic, execution/analysis-derived signal sidesteps. OpenHands'
 critic model is not obviously an upgrade — it's a different, less-grounded
-bet. See [[req-execution-guided-repair]] for the closely related evidence
+bet. See [[Environment-Bootstrap]] for the closely related evidence
 that execution-based grounding is what actually earns correctness gains.
 
 ## What needs to be done (to beat the competition)
@@ -85,5 +85,5 @@ that execution-based grounding is what actually earns correctness gains.
 - Run both configurations (static gate alone vs. static gate + critic) on `benchmarks/`; record the delta in this file and stop maintaining the critic path unless it wins clearly.
 
 ## Related
-- [[req-execution-guided-repair]] — why execution >> self-judgment as a gate
-- [[req-self-review-issue-resolution]] — self-review's dependency on this same grounding problem
+- [[Environment-Bootstrap]] — why execution >> self-judgment as a gate
+- [[Environment-Bootstrap]] — self-review's dependency on this same grounding problem

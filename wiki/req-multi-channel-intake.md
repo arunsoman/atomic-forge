@@ -28,8 +28,8 @@ doc's own guidance.
 No dedicated research literature — this is a distribution/product-surface
 decision (which platforms to integrate with), not an open research problem.
 The interesting research (turning an issue description into a task
-specification) is already covered by [[req-execution-guided-repair]] and
-[[req-repo-scale-context]]; the "which inbox does it arrive from" question
+specification) is already covered by [[Environment-Bootstrap]] and
+[[Environment-Bootstrap]]; the "which inbox does it arrive from" question
 sits entirely in integration/engineering work.
 
 ## Implication for atomic-forge

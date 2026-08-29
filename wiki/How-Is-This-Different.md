@@ -42,7 +42,7 @@ and where forge deliberately is *not* the right tool.
   and superb at it.
 - **A hosted, always-on team surface with chat and automations** →
   OpenHands Agent Canvas or Devin. forge has no hosted service — by
-  design ([[req-persistent-sandbox]], [[req-cli-ci-native]]).
+  design ([[Environment-Bootstrap]], [[Environment-Bootstrap]]).
 
 ## What forge deliberately does not try to be
 
@@ -54,4 +54,4 @@ and where forge deliberately is *not* the right tool.
   but Kubernetes and real load balancers are yours to bring.
 - **Not a persistent-VM agent desktop.** Devin-style persistence is
   answered with a different trade (ephemeral execution + git-native
-  checkpointing); see [[req-persistent-sandbox]].
+  checkpointing); see [[Environment-Bootstrap]].

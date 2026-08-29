@@ -14,7 +14,7 @@ auto-reverts any round that regresses, and additionally supports
 verdict, to absorb flaky tests) — a flake-tolerance mechanism beyond what
 this requirement's research review anticipated.
 
-**⚠️→✅ Correctness fix 2026-08-29 (found while validating [[req-parallel-execution]]):**
+**⚠️→✅ Correctness fix 2026-08-29 (found while validating [[Environment-Bootstrap]]):**
 this whole requirement's guarantee — "the winner is picked by actually
 running the suite" — depended on each subprocess test run actually
 reflecting the CURRENT file content, which was sometimes false: a
@@ -22,7 +22,7 @@ write→test→rewrite→test sequence (exactly what candidate selection and
 multi-round repair both do) could hit a stale pytest assertion-rewrite
 `.pyc` cache and silently evaluate the PREVIOUS content instead. Fixed in
 `sandbox.py::_purge_pycache`, called before every `run_test`/
-`run_test_with_progress` invocation. See [[req-parallel-execution]] for
+`run_test_with_progress` invocation. See [[Environment-Bootstrap]] for
 the full root-cause writeup and reproduction numbers. Worth flagging here
 specifically: this bug meant R14's core claim was, before the fix,
 occasionally *not actually true* in practice — the mechanism was right,
@@ -76,8 +76,8 @@ label) improves fix rate on the existing `benchmarks/` harness.
    speculative one.
 4. **Keep this as the load-bearing gate.** Per SWE-bench's own founding
    principle (arXiv:2310.06770) and reinforced by every other requirement
-   here that depends on grounding ([[req-critic-self-verification-gate]],
-   [[req-self-review-issue-resolution]]) — every other improvement should
+   here that depends on grounding ([[Environment-Bootstrap]],
+   [[Environment-Bootstrap]]) — every other improvement should
    compose with execution-based selection, never bypass it.
 
 ## Implementation plan
@@ -86,7 +86,7 @@ label) improves fix rate on the existing `benchmarks/` harness.
 - Run failing tests with `pytest --tb=long` (or language-appropriate equivalent) and capture local variable state at the failure frame; store as a new field on the existing verdict object in `checkpoint.py`, alongside (not replacing) the current pass/failed/etc. label.
 
 **Phase 2 — prompt integration (~1 day)**
-- Update `repair_agent.py`'s retry-prompt construction to include the trace payload from Phase 1 for the next K-sample attempt, formatted concisely (per the ACI error-schema work in [[req-agent-computer-interface]] if that's landed by then).
+- Update `repair_agent.py`'s retry-prompt construction to include the trace payload from Phase 1 for the next K-sample attempt, formatted concisely (per the ACI error-schema work in [[Environment-Bootstrap]] if that's landed by then).
 
 **Phase 3 — benchmark delta (~1–2 days)**
 - Run `benchmarks/` with trace-augmented retries on vs. off; only keep it on by default if fix-rate improves or attempt-count-to-fix drops, since richer prompts cost more tokens per attempt.
@@ -95,6 +95,6 @@ label) improves fix rate on the existing `benchmarks/` harness.
 - Whenever any other requirement's plan touches patch selection (R2, R10, R13), confirm in review that execution-based selection remains the final gate — trace richness and critique layers augment it, never bypass it.
 
 ## Related
-- [[req-critic-self-verification-gate]] — why execution-grounding beats self-judgment
-- [[req-self-review-issue-resolution]] — depends on this requirement being met first
-- [[req-parallel-execution]] — the selection step K-sampling relies on
+- [[Environment-Bootstrap]] — why execution-grounding beats self-judgment
+- [[Environment-Bootstrap]] — depends on this requirement being met first
+- [[Environment-Bootstrap]] — the selection step K-sampling relies on

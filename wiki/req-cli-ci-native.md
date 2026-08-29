@@ -17,7 +17,7 @@ engineering/distribution practice, not an open research question.
 
 Already met; no further action needed. Nothing to track here beyond keeping
 `action.yml` and the CLI surface in sync with new capabilities as they land
-(e.g. if [[req-review-comment-driven-fix]] is added, the Action needs a
+(e.g. if [[Environment-Bootstrap]] is added, the Action needs a
 comment-trigger entry point too).
 
 ## What needs to be done (to beat the competition)
@@ -25,7 +25,7 @@ comment-trigger entry point too).
 **Maintenance only, not new work.** Add a checklist item to the PR template
 for any new capability: "does `action.yml` expose this?" — the risk here
 isn't building the CLI/CI surface (done), it's letting it drift out of sync
-as [[req-review-comment-driven-fix]] and [[req-multi-channel-intake]] add new
+as [[Environment-Bootstrap]] and [[Environment-Bootstrap]] add new
 entry points that need their own Action triggers.
 
 ## Implementation plan

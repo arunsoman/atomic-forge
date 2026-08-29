@@ -6,26 +6,26 @@ Google Jules (2026). Each competitor's headline feature is restated as a
 requirement (R1–R15) below. Full detail — status against the actual
 atomic-forge codebase, and the state-of-the-art research literature backing
 each one — now lives in its own document under
-[[req-agent-computer-interface|own page]] per requirement below.
+[[Environment-Bootstrap|own page]] per requirement below.
 
 | # | Requirement | Sourced from | Status | Doc |
 |---|---|---|---|---|
-| R1 | Purpose-built agent-computer interface (structured navigate/view/edit/execute) instead of raw shell | SWE-agent | ✅ Done | [[req-agent-computer-interface|req-agent-computer-interface.md]] |
-| R2 | Independent critic/gate that can withhold a low-confidence patch | OpenHands | ✅ Already met | [[req-critic-self-verification-gate|req-critic-self-verification-gate.md]] |
-| R3 | Planner (strong model) / executor (cheap model) role split | Aider | ✅ Done (opt-in, default off) | [[req-planner-executor-split|req-planner-executor-split.md]] |
-| R4 | Whole-codebase symbol map for structural awareness | Aider | ✅ Already met | [[req-repo-scale-context|req-repo-scale-context.md]] |
-| R5 | Auto-commit each accepted edit with a descriptive message | Aider | ✅ Already met | [[req-auto-commit-messages|req-auto-commit-messages.md]] |
-| R6 | Persistent sandbox with terminal, editor, and browser | Devin | Not a goal (by design) | [[req-persistent-sandbox|req-persistent-sandbox.md]] |
-| R7 | Multi-channel task intake (chat, issue tracker, UI) | Devin | ✅ Done (stdin path) | [[req-multi-channel-intake|req-multi-channel-intake.md]] |
-| R8 | Fix PR generated directly from a review comment | GitHub Copilot coding agent | ✅ Done | [[req-review-comment-driven-fix|req-review-comment-driven-fix.md]] |
-| R9 | Zero new developer tooling — operate inside the host platform | GitHub Copilot coding agent, Sweep.dev | ✅ Done | [[req-zero-friction-integration|req-zero-friction-integration.md]] |
-| R10 | Self-review that the patch resolves the stated issue | Sweep.dev | ✅ Already met (fix pipeline) | [[req-self-review-issue-resolution|req-self-review-issue-resolution.md]] |
-| R11 | Scale to large/enterprise monorepos without prohibitive indexing cost | Codegen.com | Statement-level graph shipped 2026-08-29 | [[req-enterprise-scale-indexing|req-enterprise-scale-indexing.md]] |
-| R12 | Terminal-native CLI fitting into existing CI/CD | Factory.ai (Droid) | ✅ Already met | [[req-cli-ci-native|req-cli-ci-native.md]] |
-| R13 | Fully async, per-task isolated, parallel execution | Google Jules | ✅ Done (within-task); cross-task still open | [[req-parallel-execution|req-parallel-execution.md]] |
-| R14 | Execute the test suite to select a patch, not model judgment | Google Jules, OpenHands | ✅ Already met (+ correctness fix) | [[req-execution-guided-repair|req-execution-guided-repair.md]] |
-| R15 | No training on private code by default | Google Jules | ✅ Done (`--local-only`) | [[req-data-privacy-no-training|req-data-privacy-no-training.md]] |
-| R16 | Bootstrap *any* GitHub repo (language/build-agnostic) to a runnable state before repair begins | — (category-wide gap, not one competitor) | Deterministic gate + checkpoint + C/C++ shipped; agentic fallback open | [[req-environment-bootstrap|req-environment-bootstrap.md]] |
+| R1 | Purpose-built agent-computer interface (structured navigate/view/edit/execute) instead of raw shell | SWE-agent | ✅ Done | [[Environment-Bootstrap|req-agent-computer-interface.md]] |
+| R2 | Independent critic/gate that can withhold a low-confidence patch | OpenHands | ✅ Already met | [[Environment-Bootstrap|req-critic-self-verification-gate.md]] |
+| R3 | Planner (strong model) / executor (cheap model) role split | Aider | ✅ Done (opt-in, default off) | [[Environment-Bootstrap|req-planner-executor-split.md]] |
+| R4 | Whole-codebase symbol map for structural awareness | Aider | ✅ Already met | [[Environment-Bootstrap|req-repo-scale-context.md]] |
+| R5 | Auto-commit each accepted edit with a descriptive message | Aider | ✅ Already met | [[Environment-Bootstrap|req-auto-commit-messages.md]] |
+| R6 | Persistent sandbox with terminal, editor, and browser | Devin | Not a goal (by design) | [[Environment-Bootstrap|req-persistent-sandbox.md]] |
+| R7 | Multi-channel task intake (chat, issue tracker, UI) | Devin | ✅ Done (stdin path) | [[Environment-Bootstrap|req-multi-channel-intake.md]] |
+| R8 | Fix PR generated directly from a review comment | GitHub Copilot coding agent | ✅ Done | [[Environment-Bootstrap|req-review-comment-driven-fix.md]] |
+| R9 | Zero new developer tooling — operate inside the host platform | GitHub Copilot coding agent, Sweep.dev | ✅ Done | [[Environment-Bootstrap|req-zero-friction-integration.md]] |
+| R10 | Self-review that the patch resolves the stated issue | Sweep.dev | ✅ Already met (fix pipeline) | [[Environment-Bootstrap|req-self-review-issue-resolution.md]] |
+| R11 | Scale to large/enterprise monorepos without prohibitive indexing cost | Codegen.com | Statement-level graph shipped 2026-08-29 | [[Environment-Bootstrap|req-enterprise-scale-indexing.md]] |
+| R12 | Terminal-native CLI fitting into existing CI/CD | Factory.ai (Droid) | ✅ Already met | [[Environment-Bootstrap|req-cli-ci-native.md]] |
+| R13 | Fully async, per-task isolated, parallel execution | Google Jules | ✅ Done (within-task); cross-task still open | [[Environment-Bootstrap|req-parallel-execution.md]] |
+| R14 | Execute the test suite to select a patch, not model judgment | Google Jules, OpenHands | ✅ Already met (+ correctness fix) | [[Environment-Bootstrap|req-execution-guided-repair.md]] |
+| R15 | No training on private code by default | Google Jules | ✅ Done (`--local-only`) | [[Environment-Bootstrap|req-data-privacy-no-training.md]] |
+| R16 | Bootstrap *any* GitHub repo (language/build-agnostic) to a runnable state before repair begins | — (category-wide gap, not one competitor) | Deterministic gate + checkpoint + C/C++ shipped; agentic fallback open | [[Environment-Bootstrap|req-environment-bootstrap.md]] |
 
 ## atomic-forge's own claimed differentiators (for reference, not sourced from competitors)
 
@@ -41,11 +41,11 @@ front-and-center rather than diluting with the R1–R15 backlog:
 - **Blast-radius gate** — statically rejects a winning patch that changes or
   removes a function/method signature while an external caller still
   depends on the old one. Directly supported by research in
-  [[req-critic-self-verification-gate|req-critic-self-verification-gate.md]].
+  [[Environment-Bootstrap|req-critic-self-verification-gate.md]].
 - **7-way verdict taxonomy** (`passed`/`failed`/`partial`/`timeout`/
   `lint_error`/`crashed`/`skipped`) instead of a pass/fail boolean, with full
   phase-by-phase run history. See
-  [[req-execution-guided-repair|req-execution-guided-repair.md]]
+  [[Environment-Bootstrap|req-execution-guided-repair.md]]
   for a research-backed upgrade path (execution-trace-level signal).
 - **Adaptive concurrency control** — ramps LLM-call parallelism up by 1 per
   success, down by 2 on a 429, with a monotonic counter to avoid a race
@@ -84,7 +84,7 @@ multi-round repair both do — could intermittently evaluate a STALE cached
 `.pyc` instead of the just-written fix, silently corrupting the
 execution-based candidate selection R14 depends on being trustworthy.
 Root-caused and fixed in `sandbox.py::_purge_pycache`; see
-[[req-parallel-execution]] and [[req-execution-guided-repair]] for the
+[[Environment-Bootstrap]] and [[Environment-Bootstrap]] for the
 full writeup. Verified 15/15 clean (was ~50% flaky) after the fix.
 
 **What's left, honestly, not silently deferred:**

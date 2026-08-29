@@ -61,7 +61,7 @@ research risk if pursued.
 1. **Treat a review comment as a task spec, reusing the `fix` pipeline.**
    The comment body + the diff hunk it's anchored to become the issue text
    equivalent; no new repair logic needed, only a new adapter (see
-   [[req-multi-channel-intake]]) that maps a GitHub `pull_request_review_comment`
+   [[Environment-Bootstrap]]) that maps a GitHub `pull_request_review_comment`
    event into an `AtomicTask`.
 2. **Scope the fix to the commented lines/file, not the whole repo.** Unlike
    a fresh issue, a review comment already localizes the problem — skip
@@ -69,7 +69,7 @@ research risk if pursued.
    from the anchored file/line, which should be *faster* than forge's
    issue-driven `fix` path, not just as capable.
 3. **Wire the GitHub Action to listen for `@atomic-forge` in PR review
-   comments** (pairs directly with [[req-zero-friction-integration]]'s
+   comments** (pairs directly with [[Environment-Bootstrap]]'s
    remaining gap) and dispatch to this scoped path.
 4. **Skip comment-generation/quality-estimation entirely** — per
    arXiv:2511.00517 and arXiv:2409.10959, those are separate, harder subtasks
@@ -78,16 +78,16 @@ research risk if pursued.
 ## Implementation plan
 
 **Phase 1 — comment-to-task adapter (~1–2 days)**
-- Reusing the parser extracted in [[req-multi-channel-intake]]'s Phase 1, add a `from_review_comment(comment_body, file, line_range)` adapter that constructs an `AtomicTask` scoped to the commented file/line, not the whole repo.
+- Reusing the parser extracted in [[Environment-Bootstrap]]'s Phase 1, add a `from_review_comment(comment_body, file, line_range)` adapter that constructs an `AtomicTask` scoped to the commented file/line, not the whole repo.
 
 **Phase 2 — scoped repair entrypoint (~1–2 days)**
 - Add a fast-path into `repair_agent.py` that skips fault-localization search when a task already carries an explicit file/line target (from Phase 1), starting the K-sampling loop directly at that location.
 
 **Phase 3 — GitHub Action trigger (~1 day)**
-- Add a `pull_request_review_comment` event trigger to `action.yml`, gated on a mention pattern (`@atomic-forge fix`), dispatching to Phase 1's adapter — implement together with [[req-zero-friction-integration]]'s Phase 1 since both need the same trigger plumbing.
+- Add a `pull_request_review_comment` event trigger to `action.yml`, gated on a mention pattern (`@atomic-forge fix`), dispatching to Phase 1's adapter — implement together with [[Environment-Bootstrap]]'s Phase 1 since both need the same trigger plumbing.
 
 **Phase 4 — validate scoped speed/accuracy (~1 day)**
 - Compare fix time and success rate for scoped (comment-driven) vs. full (issue-driven) repair on a handful of `benchmarks/` cases retrofitted with a synthetic review comment, confirming the scoped path is actually faster, not just simpler.
 
 ## Related
-- [[req-multi-channel-intake]] — a review comment is itself an intake channel
+- [[Environment-Bootstrap]] — a review comment is itself an intake channel

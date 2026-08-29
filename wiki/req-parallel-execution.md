@@ -85,7 +85,7 @@ Forge's within-task K-sampling is already state-of-the-art in spirit
 cross-task isolation/parallelism (many independent `AtomicTask`s running in
 separate sandboxes at once) — 2606.00953's cohesion-awareness finding
 suggests this shouldn't be naive fan-out; tasks sharing call-graph neighbors
-(see [[req-enterprise-scale-indexing]]) are exactly the ones blast-radius
+(see [[Environment-Bootstrap]]) are exactly the ones blast-radius
 gating exists to protect, and running them concurrently without coordination
 risks the same class of cross-task collision the gate currently catches
 within a single task.
@@ -126,5 +126,5 @@ within a single task.
 - Once Phases 1–3 are stable, prototype an LLM-as-judge pre-filter ahead of execution-based selection (per arXiv:2506.17208) and benchmark it against execution-only selection before adopting.
 
 ## Related
-- [[req-planner-executor-split]] — orthogonal axis: breadth (K/parallel tasks) vs. depth (plan/execute roles)
-- [[req-execution-guided-repair]] — the selection mechanism K-sampling depends on
+- [[Environment-Bootstrap]] — orthogonal axis: breadth (K/parallel tasks) vs. depth (plan/execute roles)
+- [[Environment-Bootstrap]] — the selection mechanism K-sampling depends on

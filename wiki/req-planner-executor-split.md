@@ -104,4 +104,4 @@ always move together.
 - Feed it into later tasks' prompts in the same run for reprioritization — ship this regardless of the architect-mode decision, since it doesn't depend on the per-task split working out.
 
 ## Related
-- [[req-parallel-execution]] — an orthogonal axis (breadth of K attempts vs. depth of plan/execute roles)
+- [[Environment-Bootstrap]] — an orthogonal axis (breadth of K attempts vs. depth of plan/execute roles)

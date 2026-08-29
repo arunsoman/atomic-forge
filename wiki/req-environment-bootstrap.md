@@ -65,7 +65,7 @@ phases); agentic fallback open (R16c).**
   Evaluating Agentless, SWE-agent, and OpenHands shows resolve rates on
   non-Python languages are markedly worse than Python SWE-bench numbers —
   current agentic techniques, including SWE-agent's ACI
-  ([[req-agent-computer-interface]]), don't transfer cleanly across
+  ([[Environment-Bootstrap]]), don't transfer cleanly across
   languages.
 - **SWE-PolyBench** ([arXiv:2504.08703](https://arxiv.org/abs/2504.08703))
   and **SWE-bench Multilingual** ([swebench.com/multilingual](https://www.swebench.com/multilingual.html))
@@ -171,8 +171,8 @@ this whole requirements set)**
   the "what needs to be done" item above.
 
 ## Related
-- [[req-repo-scale-context]], [[req-enterprise-scale-indexing]] — both
+- [[Environment-Bootstrap]], [[Environment-Bootstrap]] — both
   presuppose the working checkout this requirement produces
-- [[req-agent-computer-interface]] — the cross-language transfer gap
+- [[Environment-Bootstrap]] — the cross-language transfer gap
   documented in Multi-SWE-bench applies to ACI design too
-- [[req-cli-ci-native]] — the `fix` CLI entrypoint this stage sits in front of
+- [[Environment-Bootstrap]] — the `fix` CLI entrypoint this stage sits in front of

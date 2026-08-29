@@ -39,7 +39,7 @@ atomic-forge fix https://github.com/mahmoud/boltons/issues/123            # fix 
 
 ## `fix-comment`: the same pipeline from a review comment
 
-PR-review-comment-driven fixes ([[req-review-comment-driven-fix]]): scoped
+PR-review-comment-driven fixes ([[Environment-Bootstrap]]): scoped
 to the commented file/line instead of a full issue.
 
 ```bash

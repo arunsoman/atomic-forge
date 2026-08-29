@@ -58,7 +58,7 @@ the original competitive scan.
 Already substantially met via `action.yml` + the `fix` CLI. The remaining
 gap (in-PR-comment triggering, e.g. `@atomic-forge fix this`) is a small,
 well-scoped engineering task, not a research gap — pairs naturally with
-[[req-review-comment-driven-fix]] if that requirement is pursued, since both
+[[Environment-Bootstrap]] if that requirement is pursued, since both
 need the same "listen for a GitHub comment, dispatch a fix run" plumbing.
 
 ## What needs to be done (to beat the competition)
@@ -74,7 +74,7 @@ need the same "listen for a GitHub comment, dispatch a fix run" plumbing.
 
 ## Implementation plan
 
-**Phase 1 — Action trigger (~1 day, shared with [[req-review-comment-driven-fix]])**
+**Phase 1 — Action trigger (~1 day, shared with [[Environment-Bootstrap]])**
 - Add the `issue_comment` / `pull_request_review_comment` event trigger and mention-pattern gate to `action.yml`.
 
 **Phase 2 — dispatch wiring (~0.5 day)**

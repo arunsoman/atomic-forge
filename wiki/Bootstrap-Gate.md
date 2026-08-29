@@ -1,6 +1,6 @@
 *A repo that can't run its own tests is a repo no repair loop can be
 honest in. The bootstrap gate closes that hole at the start of every
-run. — [[req-environment-bootstrap]]*
+run. — [[Environment-Bootstrap]]*
 
 ## The contract
 
@@ -56,7 +56,7 @@ non-`bootstrapped` verdict.
 
 When the deterministic tier finds nothing (or the runner crashes), an
 external LLM configurator can try to bring the environment up —
-[[req-environment-bootstrap]] and
+[[Environment-Bootstrap]] and
 [arXiv:2502.13681](https://arxiv.org/abs/2502.13681) for the approach.
 
 ```bash

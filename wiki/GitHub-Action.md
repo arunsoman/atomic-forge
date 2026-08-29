@@ -56,7 +56,7 @@ jobs:
 | `samples` | `2` | Patch candidates sampled per repair round |
 | `timeout` | `300` | Per-command timeout, seconds |
 | `report` | `jsonl` | `[run]` `.forge/reports.jsonl` write-back (`jsonl` or `none`) |
-| `architect` | `false` | Opt-in planner pass before each repair round — see [[req-planner-executor-split]] |
+| `architect` | `false` | Opt-in planner pass before each repair round — see [[Environment-Bootstrap]] |
 | `issue-url` | — | `[fix]` GitHub issue URL |
 | `issue-body` | — | `[fix]` The issue body, e.g. `${{ github.event.issue.body }}` — skips an in-container `gh` fetch |
 | `repo` | — | `[fix-comment]` `owner/repo`, e.g. `${{ github.repository }}` |

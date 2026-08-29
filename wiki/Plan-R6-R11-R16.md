@@ -131,7 +131,7 @@ verdicts instead of confusing downstream failures.
 4. **Doc sync (0.5d, bundled):** update `requirements.md` R16 row →
    "Partial — Python/Node/JVM/Go/Rust deterministic; C/C++ added;
    agentic fallback pending"; rewrite the stale status paragraph in
-   [[req-environment-bootstrap]].
+   [[Environment-Bootstrap]].
 
 ### Acceptance
 - A repo with no markers at all: `fix` exits at `stage="bootstrap"`

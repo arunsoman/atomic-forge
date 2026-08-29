@@ -33,7 +33,7 @@ protocol as `LocalToolBackend`.
 
 This requirement is already substantively met; the research gap is less
 "should forge have a graph" (yes, it does) and more granularity and use —
-see [[req-enterprise-scale-indexing]] for the statement-level granularity
+see [[Environment-Bootstrap]] for the statement-level granularity
 upgrade path (ARISE) that's the natural next step past forge's current
 function-level call graph.
 
@@ -71,5 +71,5 @@ function-level call graph.
 - Record results in this file; if Phase 1/2 don't move the needle on forge's own cases, say so plainly rather than keeping unused ranking code.
 
 ## Related
-- [[req-enterprise-scale-indexing]] — same survey, scaling angle
-- [[req-agent-computer-interface]] — the navigation/edit half of the same problem
+- [[Environment-Bootstrap]] — same survey, scaling angle
+- [[Environment-Bootstrap]] — the navigation/edit half of the same problem

@@ -96,5 +96,5 @@ reach the normalization/disjointness preflight.
 - Document the result (even if negative) in this file's Status line.
 
 ## Related
-- [[req-repo-scale-context]] — the retrieval/navigation half of the same problem
-- [[req-enterprise-scale-indexing]] — ACI navigation at larger scale
+- [[Environment-Bootstrap]] — the retrieval/navigation half of the same problem
+- [[Environment-Bootstrap]] — ACI navigation at larger scale

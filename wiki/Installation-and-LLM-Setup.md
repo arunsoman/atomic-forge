@@ -34,7 +34,7 @@ export FORGE_MODEL=qwen3.5:cloud FORGE_BASE_URL=http://localhost:11434/v1 FORGE_
 
 `--local-only` refuses to run against a non-loopback/private LLM endpoint —
 it enforces the "nothing leaves this machine" claim instead of merely
-permitting it. See [[req-data-privacy-no-training]]. Forge never trains on
+permitting it. See [[Environment-Bootstrap]]. Forge never trains on
 your code; there is no telemetry.
 
 ## Optional companion: CIE

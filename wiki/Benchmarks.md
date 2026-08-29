@@ -51,7 +51,7 @@ python benchmarks/measure_cie_graph_benefit.py
 | CIE token savings | ✅ measured (−63% on the case) |
 | Statement-graph localization delta (R11, ARISE-style) | Graph shipped + tested; the *live-LLM delta* is pending ([[Statement-Level-Graph]]) |
 | Agentic bootstrap success rate on un-curated repos | Gate + fallback shipped; EnvBench-style measurement pending ([[Bootstrap-Gate]]) |
-| `--architect` (planner pass) fix-rate delta | Shipped default-off pending live-LLM A/B ([[req-planner-executor-split]]) |
+| `--architect` (planner pass) fix-rate delta | Shipped default-off pending live-LLM A/B ([[Environment-Bootstrap]]) |
 
 Anything not on the ✅ lines is **not claimed** — the ledger exists so the
 boundary stays explicit.
