@@ -141,6 +141,10 @@ class RipgrepToolBackend:
                          truncated=end < len(lines),
                          hint=None if end >= len(lines) else f"{len(lines) - end} more lines; call again with a later start")
 
+    def view_window(self, path: str, center_line: int, radius: int = VIEW_WINDOW // 2) -> dict:
+        start = max(1, center_line - radius)
+        return self.view_file(path, start=start, end=center_line + radius)
+
     def file_skeleton(self, path: str) -> dict:
         """Declarations found in this one file, via a live `rg -n` over
         just that path — not a parsed skeleton."""

@@ -22,7 +22,15 @@ atomic-forge CLI.
         # bug against it, and on green a PR is opened from your FORK (never
         # pushed to origin). --dry-run does everything except the push/PR.
 
-Phases: run | generate | qa | repair | decompose | watch | fix
+    python -m atomic_forge fix-comment --repo <owner>/<repo> --file <path> \
+        --comment-body "this looks off-by-one" [--line N] [--source-url ...]
+        # review-comment-driven fix (R8): same pipeline as `fix`, but the bug
+        # description comes from a review comment already anchored to a file
+        # (+ optional line) instead of a GitHub issue fetch — localization
+        # starts scoped to that file. --comment-body-file - reads the comment
+        # from stdin. Same fork-only PR / --dry-run semantics as `fix`.
+
+Phases: run | generate | qa | repair | decompose | watch | fix | fix-comment
 """
 from __future__ import annotations
 
@@ -47,13 +55,22 @@ from .watchdog import LocalProcessCanaryDeployer, LogFailureDetector, WatchdogLo
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="atomic-forge",
                                 description="Agentic code generation + SOTA repair loop.")
-    p.add_argument("phase", choices=["run", "generate", "qa", "repair", "decompose", "watch", "fix"])
+    p.add_argument("phase", choices=["run", "generate", "qa", "repair", "decompose", "watch", "fix", "fix-comment"])
     p.add_argument("--tasks", default="tasks.json")
     p.add_argument("--project-dir", default="./forge_out")
     p.add_argument("--test-cmd", default=None, help="force a test command (default: auto-detect)")
     p.add_argument("--max-rounds", type=int, default=None,
                    help="repair/fix max rounds (default: 3 for repair, 5 for fix)")
     p.add_argument("--samples", type=int, default=2, help="patch candidates per repair round")
+    p.add_argument("--architect", action="store_true",
+                   help="[repair/fix] opt-in planner pass before each round's K-sampling "
+                        "(one extra LLM call; not yet validated to improve fix-rate — see "
+                        "the wiki page 'Planner / Executor Split' (R3)). Default off.")
+    p.add_argument("--local-only", action="store_true",
+                   help="refuse to run against a non-loopback/private LLM endpoint (R15) — "
+                        "enforces that nothing leaves this machine, e.g. a local Ollama/"
+                        "vLLM/llama.cpp server. Rejects OpenAI/OpenRouter/any hosted "
+                        "endpoint outright instead of silently proceeding.")
     p.add_argument("--report", choices=["none", "jsonl"], default="none",
                    help="write artifacts/status/repair events to .forge/reports.jsonl")
     p.add_argument("--timeout", type=int, default=300)
@@ -73,9 +90,28 @@ def main(argv=None) -> int:
     p.add_argument("--max-turns", type=int, default=10, help="[fix] max test-generation agent turns")
     p.add_argument("--dry-run", action="store_true",
                    help="[fix] do everything except push to the fork / open the PR.")
+    p.add_argument("--repo", default=None,
+                   help="[fix-comment] owner/repo (e.g. 'octocat/Hello-World')")
+    p.add_argument("--comment-body", default=None,
+                   help="[fix-comment] the review comment text (or use --comment-body-file, "
+                        "or pipe via --comment-body-file -)")
+    p.add_argument("--comment-body-file", default=None,
+                   help="[fix-comment] read the comment text from this file ('-' for stdin)")
+    p.add_argument("--file", dest="comment_file_path", default=None,
+                   help="[fix-comment] the file path (repo-relative) the comment was anchored to")
+    p.add_argument("--line", type=int, default=None, help="[fix-comment] the line the comment was anchored to")
+    p.add_argument("--source-url", default=None, help="[fix-comment] the PR/comment URL, for the PR body's 'Fixes' link")
     p.add_argument("--issue-body-file", default=None,
                    help="[fix] use this file as the issue body instead of fetching it via gh "
-                        "(the URL is still needed for owner/repo/number).")
+                        "(the URL is still needed for owner/repo/number). Pass '-' to read "
+                        "the body from stdin instead, e.g. `echo \"bug text\" | atomic-forge "
+                        "fix <url> --issue-body-file -`.")
+    p.add_argument("--skip-bootstrap", action="store_true",
+                   help="[fix] skip the R16 bootstrap gate (test-probe) on a cold clone "
+                        "whose suite you already know runs. --project-dir checkouts "
+                        "never gate.")
+    p.add_argument("--bootstrap-timeout", type=int, default=600,
+                   help="[fix] seconds the bootstrap gate's test probe may run")
     p.add_argument("--backend", choices=["local", "graph"], default="local",
                    help="tool backend: 'local' (in-memory, rebuilt per process) or "
                         "'graph' (persisted SQLite call graph, .forge/codegraph.db)")
@@ -94,7 +130,7 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
 
     try:
-        llm = default_llm()
+        llm = default_llm(local_only=args.local_only)
     except RuntimeError as e:
         print(f"[forge] {e}", file=sys.stderr)
         return 2
@@ -144,6 +180,42 @@ def main(argv=None) -> int:
                 deployer.teardown_all()
         return 0
 
+    if args.phase == "fix-comment":
+        from .fix import run_fix_from_comment
+        missing = [n for n, v in (("--repo", args.repo), ("--file", args.comment_file_path)) if not v]
+        if missing:
+            print(f"[forge] fix-comment requires {', '.join(missing)}", file=sys.stderr)
+            return 2
+        if args.comment_body_file:
+            comment_body = sys.stdin.read() if args.comment_body_file == "-" else Path(args.comment_body_file).read_text()
+        elif args.comment_body:
+            comment_body = args.comment_body
+        else:
+            print("[forge] fix-comment requires --comment-body or --comment-body-file", file=sys.stderr)
+            return 2
+        owner, repo = args.repo.split("/", 1) if "/" in args.repo else (None, None)
+        if not owner:
+            print(f"[forge] --repo must be 'owner/repo', got {args.repo!r}", file=sys.stderr)
+            return 2
+        project_dir = (Path(args.project_dir) if args.project_dir and args.project_dir != "./forge_out"
+                       else None)
+        r = run_fix_from_comment(
+            owner, repo, comment_body, args.comment_file_path, llm,
+            line=args.line, source_url=args.source_url, project_dir=project_dir,
+            install_cmd=args.install_cmd, max_rounds=args.max_rounds or 5,
+            max_turns=args.max_turns, dry_run=args.dry_run, pr_base=args.pr_base,
+            pr_branch=args.pr_branch, pr_title=args.pr_title, samples=args.samples,
+            architect_mode=args.architect, skip_bootstrap=args.skip_bootstrap,
+            bootstrap_timeout=args.bootstrap_timeout,
+        )
+        # Machine-parseable, in addition to the human-readable prints
+        # already inside run_fix_from_comment — entrypoint.sh (the GitHub
+        # Action wrapper) greps this exact prefix to populate the
+        # Action's `pr-url` output without CLI/Action coupling beyond one
+        # stable line.
+        print(f"[forge] pr-url={r.get('pr_url') or ''}")
+        return 0 if r.get("success") else 1
+
     if args.phase == "fix":
         from .fix import run_fix
         if not args.url:
@@ -156,7 +228,10 @@ def main(argv=None) -> int:
         r = run_fix(args.url, llm, project_dir=project_dir, install_cmd=args.install_cmd,
                     max_rounds=args.max_rounds or 5, max_turns=args.max_turns,
                     dry_run=args.dry_run, pr_base=args.pr_base, pr_branch=args.pr_branch,
-                    pr_title=args.pr_title, issue_body_file=issue_body_file, samples=args.samples)
+                    pr_title=args.pr_title, issue_body_file=issue_body_file, samples=args.samples,
+                    architect_mode=args.architect, skip_bootstrap=args.skip_bootstrap,
+                    bootstrap_timeout=args.bootstrap_timeout)
+        print(f"[forge] pr-url={r.get('pr_url') or ''}")
         return 0 if r.get("success") else 1
 
     batch = load_batch_json(args.tasks)
@@ -201,7 +276,7 @@ def main(argv=None) -> int:
         report = repair_loop_agentic(project_dir, llm, tools, traj,
                                      test_cmd=args.test_cmd, max_rounds=args.max_rounds or 3,
                                      samples=args.samples, timeout=args.timeout,
-                                     reporter=reporter,
+                                     reporter=reporter, architect_mode=args.architect,
                                      tasks_by_file={t.file_path: t.name for t in batch.dev_tasks()})
         state = "GREEN" if report["success"] else "EXHAUSTED"
         print(f"[repair] {state} — failures {report['initial_failures']} -> "

@@ -207,3 +207,94 @@ def test_run_fix_real_pr_uses_fork_only(monkeypatch, fake_repo):
     assert r["success"] is True
     assert r["pr_url"] == "https://github.com/up/repo/pull/1"
     assert raised["called"] is True and raised["dry_run"] is False  # went through raise_pr_via_fork (fork-only, never origin)
+
+
+def test_run_fix_issue_body_from_stdin(monkeypatch, fake_repo):
+    """--issue-body-file - (a literal dash) reads the bug text from stdin
+    instead of a file — the lowest-friction intake path (R7): `echo "bug
+    text" | atomic-forge fix <url> --issue-body-file -`, no filesystem
+    step, no `gh` fetch. The URL is still required (fix targets a real
+    repo to clone/PR against)."""
+    import io
+    import atomic_forge.fix as F
+    raised = _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
+    monkeypatch.setattr(F.sys, "stdin", io.StringIO("add(2,3) should be 5 but returns -1\nmore detail here"))
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=Path("-"), dry_run=True)
+    assert r["success"] is True
+    assert raised["called"] is True
+
+
+# ------------------------------------------------------- run_fix_from_comment (R8)
+def test_run_fix_from_comment_scopes_bug_to_file(monkeypatch, fake_repo):
+    """The comment-driven path (R8) builds a bug description that names
+    the file (and line, if given) the comment was anchored to, and skips
+    the gh issue fetch entirely — no `number` needed."""
+    import atomic_forge.fix as F
+    captured = {}
+    monkeypatch.setattr(F, "require_cie", lambda: None)
+    monkeypatch.setattr(F, "setup_python_env", lambda pd, install_cmd=None: "python")
+    monkeypatch.setattr(F, "cie_index", lambda pd, db: "indexed")
+    monkeypatch.setattr(F, "render_tool_manifest", lambda m: "")
+
+    class _Bridge:
+        def __init__(self, *a, **k): pass
+        def call(self, name, **kw): return {"ok": True, "results": []}
+        def stop(self): pass
+    monkeypatch.setattr(F, "MCPBridge", _Bridge)
+
+    class _Backend:
+        def __init__(self, *a, **k): pass
+        def describe(self): return {"results": []}
+    monkeypatch.setattr(F, "MCPToolBackend", _Backend)
+
+    class _Traj:
+        path = "/tmp/traj.jsonl"
+    monkeypatch.setattr(F, "Trajectory", lambda pd: _Traj())
+
+    def _gen(llm, br, pd, tr, bug, max_turns=10):
+        captured["bug"] = bug
+        return {"generated": "test", "turns": 1}
+    monkeypatch.setattr(F, "generate_regression_test", _gen)
+    monkeypatch.setattr(F, "oracle_fails_on_buggy", lambda pd, tr, py: (True, "out"))
+
+    def _repair(pd, llm, tools, traj, **kw):
+        return {"success": True, "rounds": 1, "initial_failures": 1,
+                "final_failures": 0, "repaired_files": ["mod.py"]}
+    monkeypatch.setattr(F, "repair_loop_agentic", _repair)
+    monkeypatch.setattr(F, "_ground_truth_green", lambda pd, cmd, timeout=300: True)
+    monkeypatch.setattr(F, "default_branch_for", lambda upstream: "main")
+
+    raised = {"called": False}
+    def _raise_pr(pd, *, upstream, title, body, base, dry_run=False):
+        raised.update(called=True, title=title, body=body)
+        return {"dry_run": True, "branch": "b", "base": base, "title": title}
+    monkeypatch.setattr(F, "raise_pr_via_fork", _raise_pr)
+
+    r = F.run_fix_from_comment(
+        "o", "r", "this off-by-one looks wrong", "mod.py", _DummyLLM(),
+        line=42, project_dir=fake_repo, dry_run=True,
+    )
+    assert r["success"] is True
+    assert r["file_path"] == "mod.py"
+    assert r["line"] == 42
+    assert "mod.py" in captured["bug"]
+    assert "line 42" in captured["bug"]
+    assert "this off-by-one looks wrong" in captured["bug"]
+    assert raised["called"] is True
+    assert "issue #" not in raised["title"]  # no fake issue number in a comment-driven PR title
+
+
+def test_run_fix_from_comment_uses_distinct_test_file_from_issue_fix(monkeypatch, fake_repo):
+    """test_id (used for the generated test filename/branch) is derived
+    from file_path, not an issue number — so a comment-driven fix and an
+    issue-driven fix on the same repo never collide on test filename."""
+    import atomic_forge.fix as F
+    raised = _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
+    r = F.run_fix_from_comment(
+        "o", "r", "please fix this", "src/app/mod.py", _DummyLLM(),
+        project_dir=fake_repo, dry_run=True,
+    )
+    assert r["success"] is True
+    assert r["test_file"] == "tests/test_forge_src_app_mod_py.py"
+    assert raised["called"] is True

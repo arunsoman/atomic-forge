@@ -1,4 +1,4 @@
-from atomic_forge.sandbox import commit, ensure_repo, lint_gate, run, truncate
+from atomic_forge.sandbox import _purge_pycache, commit, ensure_repo, lint_gate, run, run_test, truncate
 
 
 def test_run_captures_output():
@@ -83,3 +83,44 @@ def test_ensure_repo_refuses_nested_project_dir(tmp_path):
     status = run(["git", "status", "--porcelain"], cwd=outer).full_output
     assert "unrelated.txt" in status  # still untracked, never staged/committed
     assert "generated.py" not in status  # nested/'s own file never touched the outer repo
+
+
+def test_purge_pycache_removes_all_nested_caches(tmp_path):
+    (tmp_path / "__pycache__").mkdir()
+    (tmp_path / "__pycache__" / "mod.cpython-311.pyc").write_bytes(b"stale")
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "__pycache__").mkdir()
+    (tmp_path / "pkg" / "__pycache__" / "sub.cpython-311.pyc").write_bytes(b"stale")
+    (tmp_path / "keep.py").write_text("x = 1\n")
+
+    _purge_pycache(tmp_path)
+
+    assert not (tmp_path / "__pycache__").exists()
+    assert not (tmp_path / "pkg" / "__pycache__").exists()
+    assert (tmp_path / "keep.py").exists()  # only __pycache__ dirs are touched
+
+
+def test_purge_pycache_on_missing_dir_does_not_raise(tmp_path):
+    _purge_pycache(tmp_path / "does-not-exist")  # must not raise
+
+
+def test_run_test_purges_pycache_before_running(tmp_path):
+    """Regression test for the write→retest→write→retest bytecode-cache
+    staleness bug (confirmed live 2026-08-29, see _purge_pycache's own
+    docstring): rewriting a module's content between two `run_test` calls
+    against the SAME project_dir must always be reflected in the second
+    run's result — a stale `__pycache__` entry from the first run must
+    never be trusted for the second."""
+    (tmp_path / "calc.py").write_text("def add(a, b):\n    return a - b\n")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_calc.py").write_text(
+        "from calc import add\ndef test_add():\n    assert add(2, 3) == 5\n"
+    )
+    cmd = "python -m pytest -q --continue-on-collection-errors"
+
+    r1 = run_test(cmd, None, tmp_path, timeout=60)
+    assert not r1.ok  # buggy version: fails as expected, and populates __pycache__
+
+    (tmp_path / "calc.py").write_text("def add(a, b):\n    return a + b\n")
+    r2 = run_test(cmd, None, tmp_path, timeout=60)
+    assert r2.ok, r2.output  # fixed version must be seen fresh, not the stale cached bytecode

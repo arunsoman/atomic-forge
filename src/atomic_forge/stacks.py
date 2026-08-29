@@ -145,8 +145,211 @@ class _NodeStack:
         return "node:20" if self.detect(root) else None
 
 
+# ----------------------------------------------------------------- java ----
+
+class _JavaStack:
+    """Maven or Gradle, whichever the repo actually has. Maven takes
+    priority when both are present (a repo migrating build tools usually
+    still has the old pom.xml lying around after the new build/gradle.kts
+    file is added) — this matches the same "trust the more-committal
+    marker" spirit as Python's requirements.txt vs. pyproject.toml
+    handling, without needing to actually run either tool to decide."""
+    name = "java"
+
+    def _is_maven(self, root: Path) -> bool:
+        return (root / "pom.xml").exists()
+
+    def _is_gradle(self, root: Path) -> bool:
+        return (root / "build.gradle").exists() or (root / "build.gradle.kts").exists()
+
+    def detect(self, root: Path) -> bool:
+        return self._is_maven(root) or self._is_gradle(root)
+
+    def test_command(self, root: Path) -> Optional[str]:
+        if self._is_maven(root):
+            return "mvn -q -B test"
+        if self._is_gradle(root):
+            # Prefer the repo's own wrapper (self-contained, pins a
+            # known-good Gradle version) over a bare `gradle` that would
+            # depend on whatever happens to be on the image's PATH.
+            wrapper = root / "gradlew"
+            if wrapper.exists():
+                return "chmod +x ./gradlew && ./gradlew -q test --console=plain"
+            return "gradle -q test --console=plain"
+        return None
+
+    def is_test_file(self, path: str) -> bool:
+        return (
+            path.startswith("src/test/java/") or path.startswith("src/test/kotlin/")
+            or bool(re.search(r"(^|/)\w+Test\.(java|kt)$", path))
+        )
+
+    def docker_image(self, root: Path) -> Optional[str]:
+        # A JDK is required either way (mvn needs one; gradlew bootstraps
+        # its own Gradle but still needs `java` on PATH) — one image
+        # covers both build tools.
+        return "eclipse-temurin:17-jdk" if self.detect(root) else None
+
+
+# ------------------------------------------------------------------ go ----
+
+class _GoStack:
+    name = "go"
+
+    def detect(self, root: Path) -> bool:
+        return (root / "go.mod").exists()
+
+    def test_command(self, root: Path) -> Optional[str]:
+        if not self.detect(root):
+            return None
+        return "go test ./..."
+
+    def is_test_file(self, path: str) -> bool:
+        return path.endswith("_test.go")
+
+    def docker_image(self, root: Path) -> Optional[str]:
+        return "golang:1.22" if self.detect(root) else None
+
+
+# ---------------------------------------------------------------- rust ----
+
+class _RustStack:
+    name = "rust"
+
+    def detect(self, root: Path) -> bool:
+        return (root / "Cargo.toml").exists()
+
+    def test_command(self, root: Path) -> Optional[str]:
+        if not self.detect(root):
+            return None
+        return "cargo test"
+
+    def is_test_file(self, path: str) -> bool:
+        # Rust's dominant convention is inline `#[cfg(test)] mod tests`
+        # within the SAME file as the code under test, not a separate
+        # file — so this only catches the secondary convention (top-level
+        # `tests/` integration-test files), same structural limitation
+        # every other stack here has for its own language's inline-test
+        # idiom (if any). Still strictly better than treating nothing as
+        # a test file for this stack.
+        return path.startswith("tests/") or path.endswith("_test.rs")
+
+    def docker_image(self, root: Path) -> Optional[str]:
+        return "rust:1-slim" if self.detect(root) else None
+
+
+# ---------------------------------------------------------------- C/C++ ----
+
+class _CppStack:
+    """CMake, GNU Autotools, or a plain Makefile that declares an explicit
+    `test:`/`check:` target — in that priority order.
+
+    Image: `gcc:14` (buildpack-deps based — ships gcc/g++, make, and
+    cmake/ctest, and runs every command here without installing anything).
+    The command is therefore allowed to *assume* the toolchain instead of
+    apt-getting for it, which matters because `docker_env` runs everything
+    as the invoking host user (non-root in-container).
+
+    Deliberately NOT detected here: `meson.build`-only repos. No mainstream
+    toolchain image ships meson/ninja, and installing them inline as a
+    non-root container user is unreliable — a meson-only checkout
+    deterministically detects as "nothing" and falls to the agentic
+    bootstrap path (see bootstrap.py), which installs tooling inside its
+    own sandbox. Same reasoning for cmake repos that vendor their tests
+    behind targets nothing scannable reveals: the marker scan looks for
+    `enable_testing`/`include(CTest)`/`add_test` in ANY CMakeLists.txt in
+    the tree, and a repo genuinely without scannable test markers exits
+    clean (`test_command` -> None) rather than guessing.
+
+    Priority: CMake > Makefile > Autotools. A CMakeLists.txt wins over a
+    Makefile because generated Makefiles often linger next to a real
+    CMake build (same "trust the more-committal marker" rule as
+    pom.xml > build.gradle in _JavaStack)."""
+    name = "cpp"
+
+    def _is_cmake(self, root: Path) -> bool:
+        return (root / "CMakeLists.txt").exists()
+
+    def _cmake_declares_tests(self, root: Path) -> bool:
+        for cmakelists in root.rglob("CMakeLists.txt"):
+            try:
+                text = cmakelists.read_text(errors="replace")
+            except OSError:
+                continue
+            if re.search(r"enable_testing\s*\(|include\s*\(\s*CTest|add_test\s*\(", text):
+                return True
+        return False
+
+    def _makefile(self, root: Path) -> Optional[Path]:
+        for name in ("Makefile", "GNUmakefile", "makefile"):
+            f = root / name
+            if f.exists():
+                return f
+        return None
+
+    def _make_test_target(self, text: str) -> Optional[str]:
+        """The Makefile's own explicit test/check target, if any — a repo
+        with no such target deterministically declares itself untestable
+        rather than failing later with `No rule to make target 'test'.`"""
+        for target in ("test", "check"):
+            if re.search(rf"^{target}\s*:", text, re.MULTILINE):
+                return target
+        return None
+
+    def _is_autotools(self, root: Path) -> bool:
+        return any(
+            (root / name).exists()
+            for name in ("configure", "configure.ac", "configure.in", "Makefile.am")
+        )
+
+    def detect(self, root: Path) -> bool:
+        return self._is_cmake(root) or self._is_autotools(root) or self._makefile(root) is not None
+
+    def test_command(self, root: Path) -> Optional[str]:
+        if self._is_cmake(root) and self._cmake_declares_tests(root):
+            return (
+                "cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug"
+                " && cmake --build build -j"
+                " && ctest --test-dir build --output-on-failure"
+            )
+        makefile = self._makefile(root)
+        if makefile is not None:
+            try:
+                target = self._make_test_target(makefile.read_text(errors="replace"))
+            except OSError:
+                target = None
+            if target is not None:
+                return f"make -j {target}"
+        if self._is_autotools(root):
+            # configure.ac-only checkouts need autoreconf first; repos with
+            # a checked-in `configure` skip that. Both converge on make check,
+            # the standard autotools test entrypoint.
+            bootstrap = "" if (root / "configure").exists() else "autoreconf -fi && "
+            return f"{bootstrap}./configure && make -j && make check"
+        return None
+
+    def is_test_file(self, path: str) -> bool:
+        posix = path.replace("\\", "/")
+        if posix.startswith("tests/") or posix.startswith("test/"):
+            return True
+        # gtest/catch2/doctest naming: test_foo.cc, foo_test.cpp,
+        # foo_tests.cxx, FooTest.hpp — headers count too (a repair suspect
+        # for a FooTest.cc failure is often FooTest.hpp itself).
+        return bool(re.search(
+            r"(^|/)(?:test_\w+|[\w-]+_test\w*|\w+_tests|\w*Test)\.(?:c|cc|cpp|cxx|h|hpp)$",
+            posix,
+        ))
+
+    def docker_image(self, root: Path) -> Optional[str]:
+        return "gcc:14" if self.detect(root) else None
+
+
 register(_PythonStack())
 register(_NodeStack())
+register(_JavaStack())
+register(_GoStack())
+register(_RustStack())
+register(_CppStack())
 
 
 # -------------------------------------------------------------- combine ----

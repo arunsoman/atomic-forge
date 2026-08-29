@@ -6,7 +6,18 @@ FROM python:3.11-slim
 
 # git is not optional here: sandbox.py's ensure_repo()/per-task commits
 # silently no-op without it (confirmed live — see docs/github-action.md).
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+# gh is required by `command: fix` / `command: fix-comment` (pr.py's
+# fork-only PR flow shells out to it) — installed via the official apt
+# repo since Debian slim's own repos don't carry it. Harmless (unused,
+# no extra runtime cost beyond image size) for the default `command: run`
+# path, which never calls gh.
+RUN apt-get update && apt-get install -y --no-install-recommends git curl \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /action
@@ -24,6 +35,15 @@ RUN pip install --no-cache-dir .
 # requirements file IS present) already self-installs these, so this is
 # only a fallback for the bare case.
 RUN pip install --no-cache-dir pytest pytest-asyncio
+
+# CIE (https://github.com/arunsoman/cie) + the `mcp` python client are
+# REQUIRED (not optional) for `command: fix` / `command: fix-comment` —
+# see fix.py's module docstring and cie_backend.py::require_cie(), which
+# checks for both. Installed here, not left to a runtime pip install,
+# since the Action's container is immutable once built — `command: run`
+# (the default) never imports either, so this only costs image size, not
+# functionality, for run-only users.
+RUN pip install --no-cache-dir "git+https://github.com/arunsoman/cie.git" mcp
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

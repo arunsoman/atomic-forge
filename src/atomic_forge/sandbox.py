@@ -31,7 +31,7 @@ MAX_OUTPUT_CHARS = 6000  # bound tool feedback; previews, not dumps
 #: Every mainstream JS test runner (Vitest, Jest, CRA) treats CI=true as
 #: "run once and exit" instead of defaulting to an interactive watch mode
 #: that never returns.
-_TEST_ENV = {**os.environ, "CI": "true"}
+_TEST_ENV = {**os.environ, "CI": "true", "PYTHONDONTWRITEBYTECODE": "1"}
 
 
 @dataclass
@@ -84,11 +84,40 @@ def run(cmd: list[str] | str, cwd: str | Path, timeout: int = 300,
         return RunResult(exit_code=127, output=f"[command not found: {e}]")
 
 
+def _purge_pycache(project_dir: str | Path) -> None:
+    """Delete every `__pycache__` directory under `project_dir` before a
+    test run. Confirmed live (2026-08-29) as a real, intermittent
+    execution-based-selection bug, not just test flakiness: the repair
+    loop writes a candidate's fixed content to a target .py file, then
+    spawns a FRESH `python -m pytest` subprocess to test it — sometimes
+    several times (K candidates, repair rounds) well under a second apart.
+    Reproduced directly, isolated from all of forge's own code: rewriting
+    a module and immediately re-running `python -m pytest` in a new
+    subprocess intermittently (~30-40% of the time under this exact
+    write-retest-write-retest pattern) still evaluates the PREVIOUS
+    content — pytest's own assertion-rewrite import hook caches a `.pyc`
+    under `__pycache__` keyed by the source file's mtime, and on
+    filesystems/containers with coarse mtime resolution two writes inside
+    the same resolution window can land on an identical mtime despite
+    different content, so the cached (stale) bytecode is judged "still
+    valid" and reused. `PYTHONDONTWRITEBYTECODE=1` (see `_TEST_ENV`) alone
+    does NOT fix this — it only suppresses writing NEW .pyc files, not
+    reading/trusting ones that already exist from an earlier run in the
+    same project_dir. Deleting the cache outright before every test run
+    is the only fix that closes the read side too; verified clean across
+    20/20 repeated write→purge→test cycles in the minimal repro, versus
+    ~30-40% failure without it. The directory walk itself is negligible
+    cost next to spawning a test-runner subprocess."""
+    for cache_dir in Path(project_dir).rglob("__pycache__"):
+        shutil.rmtree(cache_dir, ignore_errors=True)
+
+
 def run_test(cmd: str, image: Optional[str], project_dir: str | Path, timeout: int = 300) -> RunResult:
     """Like run(), but for a TestStack's command: routes through a
     per-project Docker container (see docker_env.py) when `image` is set
     and Docker is actually usable, falling back to a bare host run()
     otherwise."""
+    _purge_pycache(project_dir)
     if image is None:
         return run(cmd, cwd=project_dir, timeout=timeout, env=_TEST_ENV)
     from . import docker_env
@@ -98,7 +127,7 @@ def run_test(cmd: str, image: Optional[str], project_dir: str | Path, timeout: i
     if container is None:
         return run(cmd, cwd=project_dir, timeout=timeout, env=_TEST_ENV)
     return docker_env.exec_in(container, cmd, cwd=Path(project_dir), timeout=timeout,
-                              env={"CI": "true"})
+                              env={"CI": "true", "PYTHONDONTWRITEBYTECODE": "1"})
 
 
 #: (phase, status, detail) -> None. Callers pass None (the default) to opt
@@ -138,10 +167,11 @@ def run_test_with_progress(
         emit("docker_setup", "skipped", "this stack runs directly on host")
 
     def _exec(cmd: str) -> RunResult:
+        _purge_pycache(project_dir)  # see _purge_pycache's docstring — same staleness race applies here
         if container is not None:
             from . import docker_env
             return docker_env.exec_in(container, cmd, cwd=project_dir, timeout=timeout,
-                                       env={"CI": "true"})
+                                       env={"CI": "true", "PYTHONDONTWRITEBYTECODE": "1"})
         return run(cmd, cwd=project_dir, timeout=timeout, env=_TEST_ENV)
 
     emit(test_phase, "running", stack.cmd)
