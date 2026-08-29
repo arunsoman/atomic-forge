@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atomic-forge"
-version = "0.1.0"
+version = "0.1.1"
 description = "An agentic generate -> test -> repair loop for LLM code generation, with a resumable checkpoint store and a SEARCH/REPLACE patch engine."
 readme = "README.md"
 requires-python = ">=3.10"
