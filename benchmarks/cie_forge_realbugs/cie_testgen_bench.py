@@ -15,8 +15,14 @@ For each bug (a natural-language issue, the same 4 real open-source bugs):
      (CIE+forge) fixes the bug against it; the harness ground-truth re-checks.
 
 So this answers: can CIE generate VALID test cases given a bug? Validity is
-measured, not asserted — a generated test only counts if it both fails on
-the buggy code and passes on the real fix.
+measured, not asserted — a generated test only counts if it both fails on the
+buggy code and passes on the real fix.
+
+Portable: reuse the MCP bridge + config from forge_cie_bench.py (same dir).
+    pip install git+https://github.com/arunsoman/atomic-forge.git \
+                git+https://github.com/arunsoman/cie.git pytest openai
+    python benchmarks/cie_forge_realbugs/cie_testgen_bench.py            # all 4
+    python benchmarks/cie_forge_realbugs/cie_testgen_bench.py mi_sliced_negative  # one
 """
 from __future__ import annotations
 
@@ -25,20 +31,24 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import traceback
 from pathlib import Path
 
 from openai import OpenAI
 
-sys.path.insert(0, "/tmp")
-from forge_cie_bench import (  # reuse the MCP bridge + config
-    MCPBridge, VENV_PY, CIE_ROOT, CASES_DIR, WORK_ROOT, MODEL, BASE_URL,
-    repair_loop_agentic, OpenAICompatLLM, Trajectory, render_tool_manifest,
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))  # import the sibling harness
+from forge_cie_bench import (  # reuse the MCP bridge + portable config
+    MCPBridge, MCPToolBackend, PY, CASES_DIR, MODEL, BASE_URL, API_KEY,
+    repair_loop_agentic, OpenAICompatLLM, Trajectory, render_tool_manifest, _check_cie,
 )
 
-OAI = OpenAI(base_url=BASE_URL, api_key="ollama")
-TG_WORK = Path("/tmp/testgen_work")
+OUT = Path(os.environ.get("BENCH_OUT", str(Path(tempfile.gettempdir()) / "cie_testgen_results.json")))
+TG_WORK = Path(os.environ.get("BENCH_WORK_DIR", str(Path(tempfile.gettempdir()) / "testgen_work")))
+
+OAI = OpenAI(base_url=BASE_URL, api_key=API_KEY)
 
 # CIE graph tool schemas offered to the test-gen agent (the grounding surface).
 CIE_TOOLS = [
@@ -97,7 +107,7 @@ assertions that pin the buggy behavior. Use `import pytest` and `from mod import
 
 # ----------------------------------------------------------------- run tests
 def _run_tests(cwd: Path) -> tuple[bool, str]:
-    p = subprocess.run(f"{VENV_PY} -m pytest test_mod.py -q --tb=short -p no:cacheprovider",
+    p = subprocess.run(f"{PY} -m pytest test_mod.py -q --tb=short -p no:cacheprovider",
                        shell=True, cwd=str(cwd), capture_output=True, text=True, timeout=120)
     return p.returncode == 0, p.stdout + p.stderr
 
@@ -164,21 +174,20 @@ def generate_test(bridge: MCPBridge, work: Path, bug: str, max_turns: int = 10) 
 
 # --------------------------------------------------------------- one case
 def run_case(case_name: str, bug: str):
-    seed = CASES_DIR / case_name
+    seed = CASES_DIR / case_name / "seed"
     work = TG_WORK / case_name
     if work.exists():
         shutil.rmtree(work)
     work.mkdir(parents=True)
     shutil.copy(seed / "mod.py", work / "mod.py")          # buggy source, no test yet
-    fixed_src = (seed / "mod_fixed.py").read_text()          # the real fix (oracle ref)
+    fixed_src = (seed / "mod_fixed.py").read_text()           # the real fix (oracle ref)
 
     db = work / ".cie" / "graph.db"
     db.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run([VENV_PY, "-m", "cie.cli", "index", str(work), "--db", str(db)],
-                   env={**os.environ, "PYTHONPATH": CIE_ROOT},
-                   capture_output=True, text=True, timeout=300)
+    subprocess.run([PY, "-m", "cie.cli", "index", str(work), "--db", str(db)],
+                   env=os.environ.copy(), capture_output=True, text=True, timeout=300)
 
-    print(f"\n{'='*72}\nCASE: {case_name} — CIE generating the test\n{'='*72}", flush=True)
+    print(f"\n{'='*72}\nCASE: {case_name} — CIE generating the test\n  model: {MODEL} @ {BASE_URL}\n{'='*72}", flush=True)
     bridge = MCPBridge(work, db)
     t0 = time.time()
     try:
@@ -202,13 +211,11 @@ def run_case(case_name: str, bug: str):
     if valid_oracle:
         bridge2 = MCPBridge(work, db)
         try:
-            llm = OpenAICompatLLM(model=MODEL, base_url=BASE_URL, api_key="ollama")
-            # rebuild a fresh ToolBackend describe() over the new bridge
-            from forge_cie_bench import MCPToolBackend
+            llm = OpenAICompatLLM(model=MODEL, base_url=BASE_URL, api_key=API_KEY)
             backend = MCPToolBackend(bridge2, work)
             manifest = backend.describe()["results"]
             traj = Trajectory(work)
-            test_cmd = f"{VENV_PY} -m pytest test_mod.py -q --tb=short -p no:cacheprovider"
+            test_cmd = f"{PY} -m pytest test_mod.py -q --tb=short -p no:cacheprovider"
             repair = repair_loop_agentic(work, llm, backend, traj, test_cmd=test_cmd,
                 max_rounds=2, samples=2, max_turns_per_attempt=10, per_issue_seconds=900,
                 timeout=120, tool_manifest=manifest, tool_manifest_text=render_tool_manifest(manifest),
@@ -276,6 +283,9 @@ BUGS = {
 
 
 def main():
+    _check_cie()
+    print(f"[bench] model={MODEL} base_url={BASE_URL} api_key={'***' if API_KEY and API_KEY!='ollama' else 'ollama'}")
+    print(f"[bench] cases={CASES_DIR} work={TG_WORK}")
     only = sys.argv[1:]
     todo = only or list(BUGS)
     results = []
@@ -309,7 +319,9 @@ def main():
     n_repaired = sum(1 for r in results if r.get("repair", {}) and r["repair"].get("ground_truth_green"))
     print(f"\nSUMMARY: CIE generated a VALID test for {n_valid}/{len(results)} bugs; "
           f"forge+CIE fixed {n_repaired}/{len(results)} green.")
-    Path("/tmp/cie_testgen_results.json").write_text(json.dumps(results, indent=2, default=str))
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OUT.write_text(json.dumps(results, indent=2, default=str))
+    print(f"results written to: {OUT}")
 
 
 if __name__ == "__main__":

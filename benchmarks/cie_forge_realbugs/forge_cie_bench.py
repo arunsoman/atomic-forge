@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fix real bugs from open-source repos using CIE (as an MCP server, as before)
+Fix real bugs from open-source repos using CIE (as an MCP server)
 + forge's real SOTA repair loop (localize -> sample K -> execution-select ->
 blast-radius gate -> commit). No modification to forge: forge's ToolBackend
 protocol is satisfied by an MCPToolBackend that relays each call to a live
@@ -10,31 +10,53 @@ Each case = a standalone seed (mod.py [pre-fix] + test_mod.py [the real PR's
 regression test]) from a permissively-licensed repo with many open bugs.
 CIE indexes the seed; the agent gets CIE graph tools (callers/affected_by/
 failing_context/...) over MCP; forge drives the repair loop.
+
+Portable: cases live next to this script (./cases), the current Python
+interpreter is used for subprocesses, and atomic_forge + cie are expected to
+be pip-importable. Override the LLM with the standard forge env vars
+(FORGE_MODEL / FORGE_BASE_URL / FORGE_API_KEY) or Ollama vars
+(OLLAMA_BASE_URL / OLLAMA_MODEL).
+
+    pip install git+https://github.com/arunsoman/atomic-forge.git \
+                git+https://github.com/arunsoman/cie.git pytest
+    python benchmarks/cie_forge_realbugs/forge_cie_bench.py            # all 4
+    python benchmarks/cie_forge_realbugs/forge_cie_bench.py boltons_bits_offbyone  # one
 """
 from __future__ import annotations
 
 import asyncio
+import importlib
 import inspect
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
 from pathlib import Path
 
-FORGE_SRC = "/home/arun/Downloads/atomic-forge/src"
-CIE_ROOT = "/tmp/cie"
-VENV_PY = "/home/arun/Downloads/atomic-forge/.venv/bin/python"
-CASES_DIR = Path("/tmp/cases")
-WORK_ROOT = Path("/tmp/forge_work")
-MODEL = os.environ.get("BENCH_MODEL", "qwen3.5:cloud")
-BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+HERE = Path(__file__).resolve().parent
+REPO = HERE.parents[2]                       # atomic-forge/
+CASES_DIR = HERE / "cases"                   # seeds shipped with the repo
+WORK_ROOT = Path(os.environ.get("BENCH_WORK_DIR", str(Path(tempfile.gettempdir()) / "forge_work")))
+OUT = Path(os.environ.get("BENCH_OUT", str(Path(tempfile.gettempdir()) / "forge_cie_results.json")))
 
-sys.path.insert(0, FORGE_SRC)
-os.environ["PYTHONPATH"] = FORGE_SRC + os.pathsep + CIE_ROOT
+PY = sys.executable                          # use the interpreter running this script
+
+# LLM config: prefer forge's standard env, fall back to Ollama defaults.
+MODEL = (os.environ.get("FORGE_MODEL") or os.environ.get("BENCH_MODEL")
+         or os.environ.get("OLLAMA_MODEL") or "qwen2.5:7b")
+BASE_URL = os.environ.get("FORGE_BASE_URL") or os.environ.get("OLLAMA_BASE_URL") or "http://localhost:11434/v1"
+API_KEY = os.environ.get("FORGE_API_KEY") or os.environ.get("OPENAI_API_KEY") or "ollama"
+
+# Make atomic_forge importable even when run from a source checkout (no install).
+try:
+    import atomic_forge  # noqa: F401
+except ImportError:
+    sys.path.insert(0, str(REPO / "src"))
 
 from atomic_forge.llm import OpenAICompatLLM                       # noqa: E402
 from atomic_forge.repair_agent import repair_loop_agentic          # noqa: E402
@@ -48,6 +70,15 @@ from mcp.client.stdio import stdio_client                          # noqa: E402
 VIEW_WINDOW = 100
 
 
+def _check_cie():
+    try:
+        importlib.import_module("cie.mcp_server")
+    except Exception as e:
+        raise SystemExit(
+            f"CIE is not importable ({e}). Install it:\n"
+            f"  pip install git+https://github.com/arunsoman/cie.git") from e
+
+
 # ----------------------------------------------------------------- MCP bridge
 class MCPBridge:
     """Run a cie-mcp ClientSession in a background event-loop thread and
@@ -56,10 +87,10 @@ class MCPBridge:
 
     def __init__(self, project_root, db_path):
         self.params = StdioServerParameters(
-            command="python",
+            command=PY,
             args=["-m", "cie.mcp_server", str(project_root),
                   "--embedded", "--db", str(db_path)],
-            env={**os.environ, "PYTHONPATH": CIE_ROOT + os.pathsep + os.environ.get("PYTHONPATH", "")},
+            env=os.environ.copy(),
         )
         self.loop = asyncio.new_event_loop()
         self.thread = threading.Thread(target=self._run, daemon=True)
@@ -204,7 +235,9 @@ class MCPToolBackend:
 
 # --------------------------------------------------------------- run one case
 def run_case(case_name, max_rounds=2, samples=2, max_turns=10):
-    seed = CASES_DIR / case_name
+    seed = CASES_DIR / case_name / "seed"
+    if not seed.exists():
+        raise FileNotFoundError(f"case {case_name!r} seed not found in {seed}")
     work = WORK_ROOT / case_name
     if work.exists():
         shutil.rmtree(work)
@@ -215,9 +248,8 @@ def run_case(case_name, max_rounds=2, samples=2, max_turns=10):
     # 1. index with CIE (so the graph is "fully aware" before the agent starts)
     db = work / ".cie" / "graph.db"
     db.parent.mkdir(parents=True, exist_ok=True)
-    idx = subprocess.run([VENV_PY, "-m", "cie.cli", "index", str(work), "--db", str(db)],
-                        env={**os.environ, "PYTHONPATH": CIE_ROOT},
-                        capture_output=True, text=True, timeout=300)
+    idx = subprocess.run([PY, "-m", "cie.cli", "index", str(work), "--db", str(db)],
+                        env=os.environ.copy(), capture_output=True, text=True, timeout=300)
     idx_summary = idx.stdout.strip().splitlines()[-1] if idx.stdout.strip() else idx.stderr[:200]
 
     # 2. spawn CIE as an MCP server (as before) + build the forge backend
@@ -226,11 +258,11 @@ def run_case(case_name, max_rounds=2, samples=2, max_turns=10):
     manifest = backend.describe()["results"]
     manifest_text = render_tool_manifest(manifest)
 
-    llm = OpenAICompatLLM(model=MODEL, base_url=BASE_URL, api_key="ollama")
+    llm = OpenAICompatLLM(model=MODEL, base_url=BASE_URL, api_key=API_KEY)
     traj = Trajectory(work)
-    test_cmd = f"{VENV_PY} -m pytest test_mod.py -q --tb=short -p no:cacheprovider"
+    test_cmd = f"{PY} -m pytest test_mod.py -q --tb=short -p no:cacheprovider"
 
-    print(f"\n{'='*72}\nCASE: {case_name}\n  cie index: {idx_summary}\n{'='*72}", flush=True)
+    print(f"\n{'='*72}\nCASE: {case_name}\n  model: {MODEL} @ {BASE_URL}\n  cie index: {idx_summary}\n{'='*72}", flush=True)
     t0 = time.time()
     err = ""
     try:
@@ -279,6 +311,11 @@ CASES = [
 
 
 def main():
+    _check_cie()
+    if not CASES_DIR.exists():
+        raise SystemExit(f"cases dir not found: {CASES_DIR}")
+    print(f"[bench] model={MODEL} base_url={BASE_URL} api_key={'***' if API_KEY and API_KEY!='ollama' else 'ollama'}")
+    print(f"[bench] cases={CASES_DIR} work={WORK_ROOT}")
     only = sys.argv[1:]  # optional subset of case names
     todo = only or CASES
     results = []
@@ -308,9 +345,11 @@ def main():
         if r.get("error"):
             print(f"  note               : {r['error'][-200:]}")
 
-    Path("/tmp/forge_cie_results.json").write_text(json.dumps(results, indent=2, default=str))
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OUT.write_text(json.dumps(results, indent=2, default=str))
     n_green = sum(1 for r in results if r.get("ground_truth_green"))
     print(f"\nSUMMARY: {n_green}/{len(results)} cases fixed green (CIE+forge)")
+    print(f"results written to: {OUT}")
 
 
 if __name__ == "__main__":

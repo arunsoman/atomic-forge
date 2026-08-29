@@ -87,11 +87,35 @@ a second look:
 ## Install
 
 ```bash
-pip install -e ".[dev]"   # from a checkout
+pip install git+https://github.com/arunsoman/atomic-forge.git   # one line, no checkout needed
+atomic-forge --help                                            # sanity check the CLI
 ```
 
-Requires Python ≥3.10. Needs an OpenAI-compatible LLM endpoint at runtime —
-see [LLM configuration](#llm-configuration) below.
+Or from a checkout: `pip install -e ".[dev]"` (also installs `pytest` for the suite).
+Requires Python ≥3.10. At runtime forge needs an **OpenAI-compatible LLM
+endpoint** — point it at OpenAI, or a local
+[Ollama](https://ollama.com) model that supports tool-calling. See
+[LLM configuration](#llm-configuration).
+
+### Code-graph backend (optional, recommended): CIE
+
+forge's repair loop can use
+**[CIE — the Code Insight Engine](https://github.com/arunsoman/cie)** as its
+code-graph backend, served as a real **MCP server** over stdio (the same
+surface Claude Code / Cursor consume). CIE does localization + blast-radius
+(`callers`, `affected_by`, `failing_context`, `file_skeleton`, …); forge does
+the sample → select → gate → commit loop — **forge itself stays unchanged**.
+Install it alongside and try a real open-source bug fix end-to-end in one line:
+
+```bash
+pip install git+https://github.com/arunsoman/cie.git pytest
+python benchmarks/cie_forge_realbugs/forge_cie_bench.py boltons_bits_offbyone
+```
+
+Needs a tool-calling model at `http://localhost:11434/v1` (Ollama default);
+override with `FORGE_MODEL` / `FORGE_BASE_URL` / `FORGE_API_KEY`. Full
+methodology + 4/4 results: [`docs/cie-forge-realbug-benchmark.md`](docs/cie-forge-realbug-benchmark.md).
+Reproducible seeds + harness: [`benchmarks/cie_forge_realbugs/`](benchmarks/cie_forge_realbugs/).
 
 ## Quickstart
 
@@ -281,12 +305,20 @@ simulated):
 
 Reproducible harness + seeds: [`benchmarks/cie_forge_realbugs/`](benchmarks/cie_forge_realbugs/)
 and [`benchmarks/measure_cie_graph_benefit.py`](benchmarks/measure_cie_graph_benefit.py).
-Raw results: [`benchmarks/results/`](benchmarks/results/).
+Raw results: [`benchmarks/results/`](benchmarks/results/). Short companion
+notes on the *why* behind these designs: [`docs/aside.md`](docs/aside.md).
+
+See also [`CONTRIBUTING.md`](CONTRIBUTING.md) for dev setup, the `AtomicTask`
+contract, and how to add a benchmark case.
 
 ```bash
-# point forge's repair loop at CIE (MCP code graph) + open the PR
-PYTHONPATH=/path/to/cie atomic-forge repair --tasks bug.json \
-  --project-dir ./checkout --test-cmd "pytest -q" --raise-pr
+# CIE + forge on a bundled real bug (CIE served as an MCP server over stdio):
+pip install git+https://github.com/arunsoman/cie.git pytest
+python benchmarks/cie_forge_realbugs/forge_cie_bench.py boltons_bits_offbyone
+
+# land a forge fix as a GitHub PR (forge's own repair CLI + --raise-pr):
+atomic-forge repair --tasks bug.json --project-dir ./checkout \
+  --test-cmd "pytest -q" --raise-pr
 ```
 
 ## Architecture
