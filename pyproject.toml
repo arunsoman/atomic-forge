@@ -4,19 +4,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atomic-forge"
-version = "0.1.1"
-description = "An agentic generate -> test -> repair loop for LLM code generation, with a resumable checkpoint store and a SEARCH/REPLACE patch engine."
+version = "0.2.0"
+description = "The reliable, test-driven repair engine you can drop under any coding agent. Issue -> failing test -> repair -> PR, with a machine-checked task contract, execution-selected patches, and crash-safe resumable runs."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Arun Soman" }]
-keywords = ["llm", "codegen", "agent", "coding-agent", "repair-loop", "swe-agent"]
+keywords = ["llm", "codegen", "agent", "coding-agent", "repair-loop", "swe-bench", "autonomous-agent", "github-action", "ollama", "checkpointing", "code-graph", "test-generation"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
     "pydantic>=2.0",
@@ -26,6 +31,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
+
+[project.urls]
+Homepage = "https://github.com/arunsoman/atomic-forge"
+Documentation = "https://github.com/arunsoman/atomic-forge/wiki"
+Repository = "https://github.com/arunsoman/atomic-forge"
+Issues = "https://github.com/arunsoman/atomic-forge/issues"
 
 [project.scripts]
 atomic-forge = "atomic_forge.cli:main"
