@@ -1,5 +1,6 @@
 # atomic-forge
 
+[![release](https://img.shields.io/github/v/release/arunsoman/atomic-forge)](https://github.com/arunsoman/atomic-forge/releases/latest)
 [![tests](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml/badge.svg)](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![python](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue.svg)](https://www.python.org/downloads/)
