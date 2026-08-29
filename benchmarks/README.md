@@ -1,8 +1,18 @@
 # Benchmarks
 
+[![tests](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml/badge.svg)](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](../LICENSE) [![discussions](https://img.shields.io/github/discussions/arunsoman/atomic-forge)](https://github.com/arunsoman/atomic-forge/discussions)
+
 Methodology and harness for validating the claims in the README's "Why
 this exists" section — every result is produced by actually running
 `atomic-forge` against a live LLM endpoint; nothing here is simulated.
+
+> **Cross-tool benchmark (separate from the cases below):**
+> [`docs/cie-graph-bugfix-benchmark.md`](../docs/cie-graph-bugfix-benchmark.md)
+> + [`measure_cie_graph_benefit.py`](measure_cie_graph_benefit.py) measure a
+> *different* question — does handing a tool-calling agent a real code graph
+> (CIE over MCP) change the token/turn/success cost of fixing one
+> mathematically-subtle bug vs. plain filesystem tools. It is not the
+> atomic-forge repair loop; the cases below are.
 
 ## Methodology
 

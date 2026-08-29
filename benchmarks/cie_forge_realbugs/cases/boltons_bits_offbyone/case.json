@@ -1,0 +1,13 @@
+{
+  "id": "boltons_bits_offbyone",
+  "source": {
+    "repo": "mahmoud/boltons",
+    "license": "MIT",
+    "fix_commit": "c1c25da365cf14878cf5317147e7a09b5d124df5",
+    "author": "uttam12331",
+    "summary": "Fix off-by-one in Bits length check"
+  },
+  "description": "Bits(val, len_) silently accepted 2**len_ (which needs len_+1 bits) because the guard used `val > 2 ** len_` instead of `val >= 2 ** len_`. Bits(4, 2) produced a 3-bit value with a declared len of 2. seed/mod.py is the verbatim pre-fix Bits class extracted to a standalone module; seed/test_mod.py is the real PR's regression test; seed/mod_fixed.py is the real fix (oracle reference).",
+  "bug_kind": "off-by-one math bound",
+  "repo_open_issues_note": "boltons has many open bug issues; this is one of a stream of recently-merged bug-fix PRs."
+}

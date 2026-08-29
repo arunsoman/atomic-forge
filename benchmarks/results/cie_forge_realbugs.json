@@ -1,0 +1,78 @@
+[
+  {
+    "case": "boltons_bits_offbyone",
+    "forge_success": true,
+    "forge_rounds": 1,
+    "initial_failures": 1,
+    "final_failures": 0,
+    "repaired_files": [
+      "mod.py"
+    ],
+    "ground_truth_green": true,
+    "ground_truth_tail": ".                                                                        [100%]\n1 passed in 0.00s",
+    "llm_calls": 7,
+    "prompt_tokens": 21235,
+    "completion_tokens": 1052,
+    "total_tokens": 22287,
+    "wall_seconds": 25.7,
+    "cie_index": "over MCP",
+    "error": ""
+  },
+  {
+    "case": "boltons_singularize_ss",
+    "forge_success": true,
+    "forge_rounds": 1,
+    "initial_failures": 1,
+    "final_failures": 0,
+    "repaired_files": [
+      "mod.py"
+    ],
+    "ground_truth_green": true,
+    "ground_truth_tail": ".                                                                        [100%]\n1 passed in 0.00s",
+    "llm_calls": 11,
+    "prompt_tokens": 43232,
+    "completion_tokens": 2002,
+    "total_tokens": 45234,
+    "wall_seconds": 40.2,
+    "cie_index": "over MCP",
+    "error": ""
+  },
+  {
+    "case": "mi_sliced_negative",
+    "forge_success": true,
+    "forge_rounds": 1,
+    "initial_failures": 1,
+    "final_failures": 0,
+    "repaired_files": [
+      "mod.py"
+    ],
+    "ground_truth_green": true,
+    "ground_truth_tail": "..                                                                       [100%]\n2 passed in 0.00s",
+    "llm_calls": 14,
+    "prompt_tokens": 53690,
+    "completion_tokens": 2310,
+    "total_tokens": 56000,
+    "wall_seconds": 48.9,
+    "cie_index": "MCP",
+    "error": ""
+  },
+  {
+    "case": "mi_running_min_stability",
+    "forge_success": true,
+    "forge_rounds": 1,
+    "initial_failures": 2,
+    "final_failures": 0,
+    "repaired_files": [
+      "mod.py"
+    ],
+    "ground_truth_green": true,
+    "ground_truth_tail": "..                                                                       [100%]\n2 passed in 0.01s",
+    "llm_calls": 8,
+    "prompt_tokens": 29331,
+    "completion_tokens": 1785,
+    "total_tokens": 31116,
+    "wall_seconds": 33.6,
+    "cie_index": "over MCP",
+    "error": ""
+  }
+]

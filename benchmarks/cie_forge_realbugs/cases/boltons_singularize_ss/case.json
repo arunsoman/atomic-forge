@@ -1,0 +1,12 @@
+{
+  "id": "boltons_singularize_ss",
+  "source": {
+    "repo": "mahmoud/boltons",
+    "license": "MIT",
+    "fix_commit": "1e61524a798ea73632029a013a7686036d5c126f",
+    "author": "Sanjay Santhanam",
+    "summary": "fix(strutils): stop singularize() mangling words ending in 'ss'"
+  },
+  "description": "singularize() blindly stripped the trailing 's' from any word ending in 's' that missed the earlier '-ies'/'-ses' branches, so already-singular words ending in a double 's' (glass, boss, kiss) were corrupted to 'glas'/'bos'/'kis'. seed/mod.py is the verbatim pre-fix singularize() extracted standalone; seed/mod_fixed.py adds the `elif word.endswith('ss'): return orig_word` branch (the real fix).",
+  "bug_kind": "missing branch / string logic"
+}

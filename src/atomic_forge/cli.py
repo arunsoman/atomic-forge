@@ -28,6 +28,7 @@ from pathlib import Path
 from .batch_io import load_batch_json
 from .decompose import decompose_spec, write_draft_json
 from .llm import default_llm
+from .pr import prepare_pr_branch, raise_pr, summarize_repair_for_pr
 from .qa import qa_phase
 from .repair_agent import DEFAULT_TEST_CMD, repair_loop_agentic
 from .reporter import make_reporter
@@ -49,6 +50,13 @@ def main(argv=None) -> int:
     p.add_argument("--report", choices=["none", "jsonl"], default="none",
                    help="write artifacts/status/repair events to .forge/reports.jsonl")
     p.add_argument("--timeout", type=int, default=300)
+    p.add_argument("--raise-pr", action="store_true",
+                   help="[repair] after a green repair, push the fix on a fresh branch to "
+                        "`origin` and open a GitHub PR with `gh` (needs gh authenticated).")
+    p.add_argument("--pr-base", default=None, help="[--raise-pr] PR base branch (default: repo default).")
+    p.add_argument("--pr-branch", default=None, help="[--raise-pr] feature branch name (default: forge/fix-<ts>).")
+    p.add_argument("--pr-title", default=None, help="[--raise-pr] override the PR title.")
+    p.add_argument("--pr-body-file", default=None, help="[--raise-pr] path to a markdown PR body.")
     p.add_argument("--backend", choices=["local", "graph"], default="local",
                    help="tool backend: 'local' (in-memory, rebuilt per process) or "
                         "'graph' (persisted SQLite call graph, .forge/codegraph.db)")
@@ -145,6 +153,12 @@ def main(argv=None) -> int:
         tools.reindex()
 
     if args.phase in ("run", "repair"):
+        if args.raise_pr and args.phase == "repair":
+            try:
+                pr_branch = prepare_pr_branch(project_dir, args.pr_branch)
+                print(f"[forge] --raise-pr: working on branch {pr_branch}")
+            except Exception as e:
+                print(f"[forge] --raise-pr: could not prepare branch ({e}); continuing on current branch")
         print("[forge] phase 3/3: testing + repair loop...")
         report = repair_loop_agentic(project_dir, llm, tools, traj,
                                      test_cmd=args.test_cmd, max_rounds=args.max_rounds,
@@ -159,6 +173,23 @@ def main(argv=None) -> int:
         usage = getattr(llm, "usage", None)
         if usage:
             print(f"[forge] {usage.summary()}")
+        if ok and args.raise_pr:
+            body = ""
+            if args.pr_body_file:
+                try:
+                    body = Path(args.pr_body_file).read_text()
+                except OSError:
+                    body = ""
+            if not body:
+                _title, body = summarize_repair_for_pr(report)
+            title = args.pr_title or _title
+            try:
+                pr = raise_pr(project_dir, title=title, body=body, base=args.pr_base)
+                print(f"[forge] PR opened: {pr.get('pr_url')} "
+                      f"(base {pr.get('base')} <- {pr.get('branch')})")
+            except Exception as e:
+                print(f"[forge] --raise-pr failed: {e}")
+                ok = False
         print(f"[forge] trajectory: {traj.path}")
         return 0 if ok else 1
 

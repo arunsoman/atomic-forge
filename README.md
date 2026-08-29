@@ -1,6 +1,12 @@
 # atomic-forge
 
 [![tests](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml/badge.svg)](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![python](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue.svg)](https://www.python.org/downloads/)
+[![GitHub Action](https://img.shields.io/badge/GitHub%20Action-atomic--forge-blue.svg)](./action.yml)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/arunsoman/atomic-forge/compare)
+[![discussions](https://img.shields.io/github/discussions/arunsoman/atomic-forge)](https://github.com/arunsoman/atomic-forge/discussions)
+[![stars](https://img.shields.io/github/stars/arunsoman/atomic-forge?style=social)](https://github.com/arunsoman/atomic-forge/stargazers)
 
 An agentic **generate → test → repair** loop for LLM code generation, built
 around three things most coding-agent libraries treat as an afterthought:
@@ -245,6 +251,43 @@ reference implementation each — bring your own (a real error tracker, a
 real load balancer/Kubernetes) by implementing the same protocol; nothing
 else about `WatchdogLoop` changes.
 
+## CIE + forge: real open-source bug fixes (and CIE-generated tests)
+
+forge's repair loop can run with **[CIE](https://github.com/arunsoman/cie)**
+(the Code Insight Engine) as its code-graph backend — served as a real
+**MCP server** over stdio, the same way Claude Code/Cursor consume it.
+CIE does localization + blast-radius (`callers`, `affected_by`,
+`failing_context`, `file_skeleton`, …); forge does the sample →
+execution-select → blast-radius-gate → commit loop. And now
+`atomic-forge repair --raise-pr` pushes the fix on a fresh branch and
+opens the GitHub PR, closing the loop end to end.
+
+Two measured benchmarks (real runs against a live tool-calling model, not
+simulated):
+
+- **CIE-vs-no-CIE token cost** on one mathematically-subtle planted bug —
+  the CIE-backed agent fixed it correctly in ~63% fewer tokens; the same
+  agent without the graph broke the suite and did not converge. →
+  [`docs/cie-graph-bugfix-benchmark.md`](docs/cie-graph-bugfix-benchmark.md)
+- **Real bugs from real open-source repos** (more-itertools, boltons —
+  MIT, many open issues): forge+CIE fixed **4/4** from the real PR's
+  regression test, each in 1 round, every fix matching the merged PR.
+  Then CIE **generated a valid regression test from just the bug
+  description** for **4/4** (validated: fails on the buggy code, passes on
+  the real fix — measured, not asserted), and forge+CIE fixed **4/4**
+  against those generated tests. →
+  [`docs/cie-forge-realbug-benchmark.md`](docs/cie-forge-realbug-benchmark.md)
+
+Reproducible harness + seeds: [`benchmarks/cie_forge_realbugs/`](benchmarks/cie_forge_realbugs/)
+and [`benchmarks/measure_cie_graph_benefit.py`](benchmarks/measure_cie_graph_benefit.py).
+Raw results: [`benchmarks/results/`](benchmarks/results/).
+
+```bash
+# point forge's repair loop at CIE (MCP code graph) + open the PR
+PYTHONPATH=/path/to/cie atomic-forge repair --tasks bug.json \
+  --project-dir ./checkout --test-cmd "pytest -q" --raise-pr
+```
+
 ## Architecture
 
 | Module | What it does |
@@ -262,6 +305,7 @@ else about `WatchdogLoop` changes.
 | `qa.py` | Synthesizes a test file per `test_triad`, gap-filling coverage |
 | `repair_agent.py` / `repair.py` | The SOTA repair loop: signals → localize → sample → select → gate |
 | `watchdog.py` | Production loop: detect a live failure → repair → canary → promote/rollback |
+| `pr.py` | Raise a GitHub PR for a landed fix (`atomic-forge repair --raise-pr`, via `gh`) |
 | `sandbox.py` / `docker_env.py` / `stacks.py` | Command execution, git, lint gate, test-stack detection, optional Docker sandboxing |
 | `concurrency.py` | The adaptive rate-limit-aware worker pool |
 | `checkpoint.py` / `checkpoint_store.py` | Crash-safe, resumable run state (SQLite) |

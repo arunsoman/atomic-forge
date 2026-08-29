@@ -1,0 +1,82 @@
+[
+  {
+    "case": "boltons_bits_offbyone",
+    "test_generated": true,
+    "fails_on_buggy": true,
+    "passes_on_fixed": true,
+    "valid_oracle": true,
+    "gen_llm_calls": 4,
+    "gen_tokens": 9611,
+    "gen_turns": 4,
+    "wall_seconds": 39.8,
+    "repair": {
+      "forge_success": true,
+      "rounds": 1,
+      "final_failures": 0,
+      "ground_truth_green": true,
+      "llm_calls": 5,
+      "total_tokens": 15990
+    },
+    "generated_test": "import pytest\nfrom mod import Bits\n\n\ndef test_bits_length_invariant():\n    # Bits(4, 2) should raise ValueError because 4 needs 3 bits (2^2 = 4, and 4 >= 4)\n    with pytest.raises(ValueError):\n        Bits(4, 2)\n\n    # Bits(1, 0) should raise ValueError because 1 needs 1 bit (2^0 = 1, and 1 >= 1)\n    with pytest.raises(ValueError):\n        Bits(1, 0)\n\n    # Bits(3, 2) should work and round-trip to bin '11'\n    b = Bits(3, 2)\n    assert b.as_bin() == '11'\n"
+  },
+  {
+    "case": "boltons_singularize_ss",
+    "test_generated": true,
+    "fails_on_buggy": true,
+    "passes_on_fixed": true,
+    "valid_oracle": true,
+    "gen_llm_calls": 5,
+    "gen_tokens": 9728,
+    "gen_turns": 5,
+    "wall_seconds": 49.7,
+    "repair": {
+      "forge_success": true,
+      "rounds": 1,
+      "final_failures": 0,
+      "ground_truth_green": true,
+      "llm_calls": 6,
+      "total_tokens": 20667
+    },
+    "generated_test": "import pytest\nfrom mod import singularize\n\n\ndef test_singularize_double_s_words():\n    \"\"\"Words already singular ending in double 's' should remain unchanged.\"\"\"\n    assert singularize('glass') == 'glass'\n    assert singularize('boss') == 'boss'\n    assert singularize('BOSS') == 'BOSS'\n\n\ndef test_singularize_plural_still_works():\n    \"\"\"Plural forms ending in 'sses' should correctly singularize.\"\"\"\n    assert singularize('glasses') == 'glass'\n"
+  },
+  {
+    "case": "mi_sliced_negative",
+    "test_generated": true,
+    "fails_on_buggy": true,
+    "passes_on_fixed": true,
+    "valid_oracle": true,
+    "gen_llm_calls": 5,
+    "gen_tokens": 9892,
+    "gen_turns": 5,
+    "wall_seconds": 52.7,
+    "repair": {
+      "forge_success": true,
+      "rounds": 1,
+      "final_failures": 0,
+      "ground_truth_green": true,
+      "llm_calls": 9,
+      "total_tokens": 25210
+    },
+    "generated_test": "import pytest\nfrom mod import sliced\n\n\ndef test_sliced_negative_n_raises():\n    \"\"\"Negative slice size n should raise ValueError.\"\"\"\n    with pytest.raises(ValueError):\n        list(sliced('ABCDEFG', -1))\n\n\ndef test_sliced_negative_n_strict_raises():\n    \"\"\"Negative slice size n with strict=True should raise ValueError.\"\"\"\n    with pytest.raises(ValueError):\n        list(sliced('ABCDEFG', -1, strict=True))\n\n\ndef test_sliced_positive_n_works():\n    \"\"\"Positive slice size should work correctly.\"\"\"\n    assert list(sliced('ABCDEF', 3)) == ['ABC', 'DEF']\n"
+  },
+  {
+    "case": "mi_running_min_stability",
+    "test_generated": true,
+    "fails_on_buggy": true,
+    "passes_on_fixed": true,
+    "valid_oracle": true,
+    "gen_llm_calls": 4,
+    "gen_tokens": 11467,
+    "gen_turns": 4,
+    "wall_seconds": 69.9,
+    "repair": {
+      "forge_success": true,
+      "rounds": 1,
+      "final_failures": 0,
+      "ground_truth_green": true,
+      "llm_calls": 13,
+      "total_tokens": 71333
+    },
+    "generated_test": "\"\"\"Regression test for running_min/running_max type stability bug.\"\"\"\nimport pytest\nfrom fractions import Fraction\nfrom mod import running_min, running_max\n\n\ndef test_running_min_type_stability():\n    \"\"\"running_min must preserve type stability matching plain min().\"\"\"\n    data = [0, 0.0, Fraction(0)]\n    maxlen = 2\n    \n    # Expected: types that plain min() would return for each window\n    # Window [0:1] -> min([0]) -> 0 (int)\n    # Window [0:2] -> min([0, 0.0]) -> 0 (int, left wins on equality)\n    # Window [1:3] -> min([0.0, Fraction(0)]) -> 0.0 (float, left wins)\n    expected_types = [\n        type(min(data[0:1])),\n        type(min(data[0:2])),\n        type(min(data[1:3])),\n    ]\n    \n    result = list(running_min(data, maxlen=maxlen))\n    actual_types = list(map(type, result))\n    \n    assert actual_types == expected_types, f\"Expected {expected_types}, got {actual_types}\"\n\n\ndef test_running_max_type_stability():\n    \"\"\"running_max must preserve type stability matching plain max().\"\"\"\n    data = [0, 0.0, Fraction(0)]\n    maxlen = 2\n    \n    # Expected: types that plain max() would return for each window\n    # Window [0:1] -> max([0]) -> 0 (int)\n    # Window [0:2] -> max([0, 0.0]) -> 0 (int, left wins on equality)\n    # Window [1:3] -> max([0.0, Fraction(0)]) -> 0.0 (float, left wins)\n    expected_types = [\n        type(max(data[0:1])),\n        type(max(data[0:2])),\n        type(max(data[1:3])),\n    ]\n    \n    result = list(running_max(data, maxlen=maxlen))\n    actual_types = list(map(type, result))\n    \n    assert actual_types == expected_types, f\"Expected {expected_types}, got {actual_types}\"\n"
+  }
+]

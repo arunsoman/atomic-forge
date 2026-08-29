@@ -1,0 +1,12 @@
+{
+  "id": "mi_sliced_negative",
+  "source": {
+    "repo": "more-itertools/more-itertools",
+    "license": "MIT",
+    "fix_commit": "958990e22c4ab6daf434d89cf2b86d7a4a7a9e3c",
+    "author": "Sanjay Santhanam",
+    "summary": "Raise for negative slice sizes in sliced()"
+  },
+  "description": "sliced(seq, n) with a negative n silently produced a wrong, truncated result (the internal `seq[i : i + n]` generator with i stepping by count(0, n) yields one truncated slice) instead of raising. The real fix adds `if n < 0: raise ValueError('n must be at least 0')` at the top of the function. seed/mod.py is the verbatim pre-fix sliced() extracted standalone; seed/mod_fixed.py is the real fix.",
+  "bug_kind": "missing input guard"
+}

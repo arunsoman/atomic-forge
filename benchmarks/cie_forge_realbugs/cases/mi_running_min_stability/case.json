@@ -1,0 +1,12 @@
+{
+  "id": "mi_running_min_stability",
+  "source": {
+    "repo": "more-itertools/more-itertools",
+    "license": "MIT",
+    "fix_commit": "d992be0de9383ddcaae3a24866a2d96b52132b07",
+    "author": "Raymond Hettinger",
+    "summary": "Fix stability in running_min and running_max"
+  },
+  "description": "running_min/running_max use a monotonically-increasing/decreasing subsequence with a STRICT comparison (`<` / `>`), so when an equal-but-different-type value arrives (0 then 0.0 then Fraction(0)) the incumbent is dropped and the running min/max silently changes TYPE. min(x,y)/max(x,y) return the LEFT operand when x == y, so the window must keep the incumbent's type. The real fix uses `<=` / `>=`. This is the mathematically-subtle case in the suite. seed/mod.py is the verbatim pre-fix extracted standalone; seed/mod_fixed.py is the real fix.",
+  "bug_kind": "algorithmic stability (strict vs non-strict comparison)"
+}
