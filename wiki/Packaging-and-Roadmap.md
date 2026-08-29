@@ -2,6 +2,16 @@
 copy that matters: someone should be able to drop forge into their repo in
 under five minutes.*
 
+## 0. Distribution status (what shipped 2026-08-29)
+
+- ✅ **v0.2.0 released** with full notes (release feed + Market-place readiness)
+- ✅ **PyPI publish workflow committed** (`publish-pypi.yml`) —
+  `pip install atomic-forge` goes live the moment a token is set as the
+  `PYPI_API_KEY` secret (or the trusted-publisher path is configured)
+- ✅ Repo card: description = positioning line, homepage = wiki, 17 topics
+- ✅ README, wiki, Discussions live — the receiving surfaces are ready; the
+  remaining 0-distribution gap is publishing + announcing, not building
+
 ## 1. GitHub Action (highest leverage)
 
 The `action.yml`/`Dockerfile` at the repo root already is the shipped
