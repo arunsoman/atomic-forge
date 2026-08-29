@@ -4,8 +4,8 @@
 
 Short, opinionated notes that sit *alongside* the main docs — the *why*
 behind decisions, and the gotchas that aren't obvious from the README. None
-of this repeats [`README.md`](../README.md) or the
-[benchmark reports](./); it's the margin commentary.
+of this repeats [`README.md`](https://github.com/arunsoman/atomic-forge#readme) or the
+[benchmark reports](https://github.com/arunsoman/atomic-forge/tree/main/benchmarks/results); it's the margin commentary.
 
 ---
 
@@ -29,7 +29,7 @@ a latent bug in its hunk-disjointness check: it used a pairwise-adjacent
 overlap test that missed interval *containment* and *straddle*, so two
 non-adjacent hunks that overlap could both apply. It's now a running-max
 sweep-line with regression tests
-([`tests/test_patch.py`](../tests/test_patch.py)). The lesson: even the
+([`tests/test_patch.py`](https://github.com/arunsoman/atomic-forge/blob/main/tests/test_patch.py)). The lesson: even the
 "obviously correct" parts of the one canonical engine need tests.
 
 ## Checkpoint *before*, not after
@@ -125,5 +125,5 @@ forge's repair loop fixed all four from the real PR's test, CIE generated a
 valid regression test for all four from just the bug description, and forge
 then fixed all four against those generated tests.* Broader generalizations
 need more bugs, more models, and more runs — which is exactly the kind of
-contribution [`CONTRIBUTING.md`](../CONTRIBUTING.md#adding-a-benchmark-case)
+contribution [`CONTRIBUTING.md`](https://github.com/arunsoman/atomic-forge/blob/main/CONTRIBUTING.md#adding-a-benchmark-case)
 asks for.
