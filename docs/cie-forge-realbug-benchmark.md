@@ -137,21 +137,26 @@ opens the PR**, end to end.
 ## Reproduce
 
 ```bash
-# prereqs: Ollama with a tool-calling model; the `cie` package importable
-# (PYTHONPATH); forge's venv has atomic_forge + pytest; `gh` for --raise-pr.
-export PYTHONPATH=/path/to/cie
-export BENCH_MODEL=qwen3.5:cloud
+# one-line install (forge + CIE + pytest), then run either experiment:
+pip install git+https://github.com/arunsoman/atomic-forge.git \
+            git+https://github.com/arunsoman/cie.git pytest
 
 # Experiment A — fix with the real PR's test:
-python benchmarks/cie_forge_realbugs/forge_cie_bench.py
+python benchmarks/cie_forge_realbugs/forge_cie_bench.py            # all 4 cases
+python benchmarks/cie_forge_realbugs/forge_cie_bench.py boltons_bits_offbyone  # one case
 
 # Experiment B — CIE generates the test, then forge fixes:
 python benchmarks/cie_forge_realbugs/cie_testgen_bench.py
 ```
 
 Each harness indexes the case with `cie index`, spawns `cie-mcp --embedded`
-over stdio, and runs forge's real `repair_loop_agentic`. Paths/models are
-overridable via constants at the top of each harness.
+over stdio, and runs forge's real `repair_loop_agentic`. Cases ship next to the
+script (`cases/<id>/seed/`); work dirs and result JSON go under your temp dir
+(override with `BENCH_WORK_DIR` / `BENCH_OUT`). The LLM is configured via forge's
+standard env vars (`FORGE_MODEL` / `FORGE_BASE_URL` / `FORGE_API_KEY`) or Ollama's
+(`OLLAMA_BASE_URL` / `OLLAMA_MODEL`); default is a local Ollama `qwen2.5:7b`. Use
+any tool-calling OpenAI-compatible model — the recorded run used a larger cloud
+model, so absolute token numbers will differ from the table above.
 
 ## Honest caveats
 
