@@ -25,12 +25,15 @@ per-run (huge repos that want the ripgrep fallback; before/after bench).
 from __future__ import annotations
 
 import ast
+import sys
 
 #: Compound statements whose nested blocks share the enclosing function's
 #: scope — `gen_stmts` descends into those bodies. Nested def/class/lambda
 #: bodies are NOT descended into (see module docstring).
 _CONTROL_STMTS = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.With,
-                  ast.AsyncWith, ast.Try, ast.TryStar)
+                 ast.AsyncWith, ast.Try) + ((ast.TryStar,)
+                                            if sys.version_info >= (3, 11)
+                                            else ())
 
 _TEXT_CAP = 200
 
