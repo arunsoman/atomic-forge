@@ -1,13 +1,13 @@
 # atomic-forge
 
-[![release](https://img.shields.io/github/v/release/arunsoman/atomic-forge)](https://github.com/arunsoman/atomic-forge/releases/latest)
-[![tests](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml/badge.svg)](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml)
+[![release](https://img.shields.io/github/v/release/kannamma-labs/atomic-forge)](https://github.com/kannamma-labs/atomic-forge/releases/latest)
+[![tests](https://github.com/kannamma-labs/atomic-forge/actions/workflows/test.yml/badge.svg)](https://github.com/kannamma-labs/atomic-forge/actions/workflows/test.yml)
 [![license](https://img.shields.io/badge/license-BSL--1.1-blue.svg)](./LICENSE)
 [![python](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue.svg)](https://www.python.org/downloads/)
 [![GitHub Action](https://img.shields.io/badge/GitHub%20Action-atomic--forge-blue.svg)](./action.yml)
-[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/arunsoman/atomic-forge/compare)
-[![discussions](https://img.shields.io/github/discussions/arunsoman/atomic-forge)](https://github.com/arunsoman/atomic-forge/discussions)
-[![stars](https://img.shields.io/github/stars/arunsoman/atomic-forge?style=social)](https://github.com/arunsoman/atomic-forge/stargazers)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/kannamma-labs/atomic-forge/compare)
+[![discussions](https://img.shields.io/github/discussions/kannamma-labs/atomic-forge)](https://github.com/kannamma-labs/atomic-forge/discussions)
+[![stars](https://img.shields.io/github/stars/kannamma-labs/atomic-forge?style=social)](https://github.com/kannamma-labs/atomic-forge/stargazers)
 
 > **The reliable, test-driven repair engine you can drop under any coding agent.**
 > (Issue → failing test → repair → PR — an agentic coding-engine library
@@ -29,7 +29,7 @@
 ## Quickstart
 
 ```bash
-pip install git+https://github.com/arunsoman/atomic-forge.git
+pip install git+https://github.com/kannamma-labs/atomic-forge.git
 
 export FORGE_API_KEY=sk-... FORGE_BASE_URL=https://api.openai.com/v1 FORGE_MODEL=gpt-4o-mini
 # or fully local: FORGE_MODEL=qwen3.5:cloud FORGE_BASE_URL=http://localhost:11434/v1 FORGE_API_KEY=ollama
@@ -41,7 +41,7 @@ atomic-forge fix https://github.com/mahmoud/boltons/issues/123 --dry-run
 atomic-forge run --tasks tasks.json --project-dir ./out
 ```
 
-📄 **[Deep-dive docs live in the wiki](https://github.com/arunsoman/atomic-forge/wiki)** — quickstart, CLI reference, the repair loop, the bootstrap gate, benchmarks methodology, and the full R1–R16 requirements survey.
+📄 **[Deep-dive docs live in the wiki](https://github.com/kannamma-labs/atomic-forge/wiki)** — quickstart, CLI reference, the repair loop, the bootstrap gate, benchmarks methodology, and the full R1–R16 requirements survey.
 
 ## Measured results
 
@@ -51,7 +51,7 @@ atomic-forge run --tasks tasks.json --project-dir ./out
 | Regression tests generated from the issue text alone | **4/4 valid** (fail on buggy, pass on real fix) | same benchmark, second half |
 | Code-graph (CIE) token cost | **~63% fewer tokens**, without the graph the agent didn't converge | planted subtle bug, same agent, A/B |
 
-Harness + seeds: [`benchmarks/`](benchmarks/) — methodology in the [wiki's Benchmarks page](https://github.com/arunsoman/atomic-forge/wiki/Benchmarks).
+Harness + seeds: [`benchmarks/`](benchmarks/) — methodology in the [wiki's Benchmarks page](https://github.com/kannamma-labs/atomic-forge/wiki/Benchmarks).
 
 ## How it fits the ecosystem
 
@@ -63,14 +63,14 @@ surface for autonomous issue → PR.
 
 | | |
 |---|---|
-| [**Quickstart**](https://github.com/arunsoman/atomic-forge/wiki/Quickstart) | First run: task contract, `decompose`, `run`, Python API |
-| [**Issue → PR**](https://github.com/arunsoman/atomic-forge/wiki/Issue-to-PR) | `fix` / `fix-comment` pipelines, fork-only PRs, safety properties |
-| [**Bootstrap gate**](https://github.com/arunsoman/atomic-forge/wiki/Bootstrap-Gate) | Environment bootstrap for *any* GitHub URL, agentic fallback |
-| [**Benchmarks**](https://github.com/arunsoman/atomic-forge/wiki/Benchmarks) | Measured results + the shipped-vs-claimed ledger |
-| [**How it's different**](https://github.com/arunsoman/atomic-forge/wiki/How-Is-This-Different) | Honest landscape vs Cursor/Claude Code, Devin, aider, SWE-agent / OpenHands — and when to use them instead |
-| [**Evaluation plan**](https://github.com/arunsoman/atomic-forge/wiki/Evaluation-Plan) | The public-evaluation contract we'll be judged by: SWE-bench + real issues, baselines, ablations, cost-per-fix |
-| [**Packaging & roadmap**](https://github.com/arunsoman/atomic-forge/wiki/Packaging-and-Roadmap) | GitHub-Action-first distribution: drop-in in <5 minutes, example workflows |
-| [**Requirements R1–R16**](https://github.com/arunsoman/atomic-forge/wiki/Requirements-and-Roadmap) | Competitive survey, one page per requirement, status against real code |
+| [**Quickstart**](https://github.com/kannamma-labs/atomic-forge/wiki/Quickstart) | First run: task contract, `decompose`, `run`, Python API |
+| [**Issue → PR**](https://github.com/kannamma-labs/atomic-forge/wiki/Issue-to-PR) | `fix` / `fix-comment` pipelines, fork-only PRs, safety properties |
+| [**Bootstrap gate**](https://github.com/kannamma-labs/atomic-forge/wiki/Bootstrap-Gate) | Environment bootstrap for *any* GitHub URL, agentic fallback |
+| [**Benchmarks**](https://github.com/kannamma-labs/atomic-forge/wiki/Benchmarks) | Measured results + the shipped-vs-claimed ledger |
+| [**How it's different**](https://github.com/kannamma-labs/atomic-forge/wiki/How-Is-This-Different) | Honest landscape vs Cursor/Claude Code, Devin, aider, SWE-agent / OpenHands — and when to use them instead |
+| [**Evaluation plan**](https://github.com/kannamma-labs/atomic-forge/wiki/Evaluation-Plan) | The public-evaluation contract we'll be judged by: SWE-bench + real issues, baselines, ablations, cost-per-fix |
+| [**Packaging & roadmap**](https://github.com/kannamma-labs/atomic-forge/wiki/Packaging-and-Roadmap) | GitHub-Action-first distribution: drop-in in <5 minutes, example workflows |
+| [**Requirements R1–R16**](https://github.com/kannamma-labs/atomic-forge/wiki/Requirements-and-Roadmap) | Competitive survey, one page per requirement, status against real code |
 
 ## Notable modules
 
@@ -94,23 +94,23 @@ surface for autonomous issue → PR.
   [`examples/`](examples/). Bring your own (a real language server) behind
   the same protocol.
 
-See the [wiki's Architecture page](https://github.com/arunsoman/atomic-forge/wiki/Architecture) for the full module map.
+See the [wiki's Architecture page](https://github.com/kannamma-labs/atomic-forge/wiki/Architecture) for the full module map.
 
 ## GitHub Action
 
 This repo is also a GitHub Action (`action.yml` + `Dockerfile`) — a thin,
 containerized wrapper around the CLI. No hosted service, no bot; it runs
 inside your job's container. See the
-[wiki's GitHub Action page](https://github.com/arunsoman/atomic-forge/wiki/GitHub-Action)
+[wiki's GitHub Action page](https://github.com/kannamma-labs/atomic-forge/wiki/GitHub-Action)
 for inputs/outputs and worked workflows.
 
 ## Contributing & community
 
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev setup, the `AtomicTask`
   contract, how to add a benchmark case
-- [Discussions](https://github.com/arunsoman/atomic-forge/discussions) —
+- [Discussions](https://github.com/kannamma-labs/atomic-forge/discussions) —
   questions and ideas
-- Companion design notes: the [wiki's Design Notes](https://github.com/arunsoman/atomic-forge/wiki/Design-Notes)
+- Companion design notes: the [wiki's Design Notes](https://github.com/kannamma-labs/atomic-forge/wiki/Design-Notes)
 
 ## License
 

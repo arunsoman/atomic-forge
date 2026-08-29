@@ -1,6 +1,6 @@
 # GitHub Action
 
-[![tests](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml/badge.svg)](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE) [![discussions](https://img.shields.io/github/discussions/arunsoman/atomic-forge)](https://github.com/arunsoman/atomic-forge/discussions)
+[![tests](https://github.com/kannamma-labs/atomic-forge/actions/workflows/test.yml/badge.svg)](https://github.com/kannamma-labs/atomic-forge/actions/workflows/test.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE) [![discussions](https://img.shields.io/github/discussions/kannamma-labs/atomic-forge)](https://github.com/kannamma-labs/atomic-forge/discussions)
 
 This repo doubles as a GitHub Action (`action.yml` + `Dockerfile` at the
 repo root) — a thin wrapper around the `atomic-forge` CLI, nothing more:
@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: arunsoman/atomic-forge@v0.1.0
+      - uses: kannamma-labs/atomic-forge@v0.1.0
         id: forge
         with:
           tasks: tasks.json
@@ -58,7 +58,7 @@ jobs:
 | `samples` | `2` | Patch candidates sampled per repair round |
 | `timeout` | `300` | Per-command timeout, seconds |
 | `report` | `jsonl` | `[run]` `.forge/reports.jsonl` write-back (`jsonl` or `none`) |
-| `architect` | `false` | Opt-in planner pass before each repair round — see the [wiki page](https://github.com/arunsoman/atomic-forge/wiki/req-planner-executor-split) |
+| `architect` | `false` | Opt-in planner pass before each repair round — see the [wiki page](https://github.com/kannamma-labs/atomic-forge/wiki/req-planner-executor-split) |
 | `issue-url` | — | `[fix]` GitHub issue URL |
 | `issue-body` | — | `[fix]` The issue body, e.g. `${{ github.event.issue.body }}` — skips an in-container `gh` fetch |
 | `repo` | — | `[fix-comment]` `owner/repo`, e.g. `${{ github.repository }}` |
@@ -102,7 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: arunsoman/atomic-forge@v0.1.0
+      - uses: kannamma-labs/atomic-forge@v0.1.0
         id: forge
         with:
           command: fix-comment

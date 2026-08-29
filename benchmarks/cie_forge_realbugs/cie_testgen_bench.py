@@ -19,7 +19,7 @@ measured, not asserted — a generated test only counts if it both fails on the
 buggy code and passes on the real fix.
 
 Portable: reuse the MCP bridge + config from forge_cie_bench.py (same dir).
-    pip install git+https://github.com/arunsoman/atomic-forge.git \
+    pip install git+https://github.com/kannamma-labs/atomic-forge.git \
                 git+https://github.com/arunsoman/cie.git pytest openai
     python benchmarks/cie_forge_realbugs/cie_testgen_bench.py            # all 4
     python benchmarks/cie_forge_realbugs/cie_testgen_bench.py mi_sliced_negative  # one

@@ -62,5 +62,5 @@ localization over multi-hop dependency views,
 [arXiv:2605.03117](https://arxiv.org/abs/2605.03117)). The *delta on
 forge's own benchmark cases with a live LLM* is measured in Phase 3 — the
 graph itself, its semantics, and its tests
-([`tests/test_graph_statements.py`](https://github.com/arunsoman/atomic-forge/blob/main/tests/test_graph_statements.py))
+([`tests/test_graph_statements.py`](https://github.com/kannamma-labs/atomic-forge/blob/main/tests/test_graph_statements.py))
 are shipped and green. See [[Benchmarks]] for what's measured today.

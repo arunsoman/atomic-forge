@@ -8,7 +8,7 @@ opinionated codebase, so a few conventions keep it coherent.
 ## Quick start
 
 ```bash
-git clone https://github.com/arunsoman/atomic-forge.git
+git clone https://github.com/kannamma-labs/atomic-forge.git
 cd atomic-forge
 python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"          # pydantic, httpx, openai + pytest
@@ -89,7 +89,7 @@ record raw JSON in `benchmarks/results/`.
   `mod.py` + `test_mod.py` like the benchmark seeds, so it reproduces with
   just pytest).
 - **Questions / design discussion:** use
-  [GitHub Discussions](https://github.com/arunsoman/atomic-forge/discussions).
+  [GitHub Discussions](https://github.com/kannamma-labs/atomic-forge/discussions).
 
 ## House rules
 

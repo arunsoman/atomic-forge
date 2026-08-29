@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: arunsoman/atomic-forge@v0.1.0
+      - uses: kannamma-labs/atomic-forge@v0.1.0
         id: forge
         with:
           tasks: tasks.json
@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: arunsoman/atomic-forge@v0.1.0
+      - uses: kannamma-labs/atomic-forge@v0.1.0
         id: forge
         with:
           command: fix-comment

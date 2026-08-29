@@ -48,7 +48,7 @@ Fetches the issue, clones the repo, bootstraps the environment (deterministic pr
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](https://github.com/arunsoman/atomic-forge/blob/main/CONTRIBUTING.md) for dev setup, the `AtomicTask` contract, and how to add a benchmark case.
+See [`CONTRIBUTING.md`](https://github.com/kannamma-labs/atomic-forge/blob/main/CONTRIBUTING.md) for dev setup, the `AtomicTask` contract, and how to add a benchmark case.
 
 ## License
 

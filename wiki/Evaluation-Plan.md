@@ -34,7 +34,7 @@ against strong baselines. The bar in 2026:
    methodology + first numbers (the existing 4/4 real-bug harness —
    [[Benchmarks]] — is the template; extend it, don't replace it).
 2. **Make the harness runnable by others.** It already is:
-   [`benchmarks/cie_forge_realbugs/forge_cie_bench.py <case>`](https://github.com/arunsoman/atomic-forge/tree/main/benchmarks) —
+   [`benchmarks/cie_forge_realbugs/forge_cie_bench.py <case>`](https://github.com/kannamma-labs/atomic-forge/tree/main/benchmarks) —
    one command, deterministic seeds, Ollama-default endpoint. The
    evaluation-extended version must be as runnable.
 3. **Track two success numbers**: one-shot success rate, and

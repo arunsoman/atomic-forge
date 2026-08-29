@@ -87,8 +87,8 @@ Properties (each a deliberate design decision):
   command actually completes with real output *inside the container* —
   "I think it's set up now" from the model is not accepted.
 
-Tests: [`tests/test_bootstrap.py`](https://github.com/arunsoman/atomic-forge/blob/main/tests/test_bootstrap.py) and
-[`tests/test_bootstrap_agentic.py`](https://github.com/arunsoman/atomic-forge/blob/main/tests/test_bootstrap_agentic.py) (fake LLM + scripted Docker boundary).
+Tests: [`tests/test_bootstrap.py`](https://github.com/kannamma-labs/atomic-forge/blob/main/tests/test_bootstrap.py) and
+[`tests/test_bootstrap_agentic.py`](https://github.com/kannamma-labs/atomic-forge/blob/main/tests/test_bootstrap_agentic.py) (fake LLM + scripted Docker boundary).
 
 **Still open:** wiring the bootstrapped image into the repair loop's
 execution path — the designed bridge is the "bake-then-cells" mechanism in

@@ -1,7 +1,7 @@
 ## Install
 
 ```bash
-pip install git+https://github.com/arunsoman/atomic-forge.git   # one line, no checkout needed
+pip install git+https://github.com/kannamma-labs/atomic-forge.git   # one line, no checkout needed
 atomic-forge --help                                            # sanity check the CLI
 ```
 

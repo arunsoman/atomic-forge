@@ -17,7 +17,7 @@ be pip-importable. Override the LLM with the standard forge env vars
 (FORGE_MODEL / FORGE_BASE_URL / FORGE_API_KEY) or Ollama vars
 (OLLAMA_BASE_URL / OLLAMA_MODEL).
 
-    pip install git+https://github.com/arunsoman/atomic-forge.git \
+    pip install git+https://github.com/kannamma-labs/atomic-forge.git \
                 git+https://github.com/arunsoman/cie.git pytest
     python benchmarks/cie_forge_realbugs/forge_cie_bench.py            # all 4
     python benchmarks/cie_forge_realbugs/forge_cie_bench.py boltons_bits_offbyone  # one

@@ -42,4 +42,4 @@ override with `FORGE_MODEL` / `FORGE_BASE_URL` / `FORGE_API_KEY`.
   `LocalToolBackend`/`GraphToolBackend` work standalone.
 
 Methodology and raw numbers: [[Benchmarks]]; harness in
-[`benchmarks/cie_forge_realbugs/`](https://github.com/arunsoman/atomic-forge/tree/main/benchmarks/cie_forge_realbugs).
+[`benchmarks/cie_forge_realbugs/`](https://github.com/kannamma-labs/atomic-forge/tree/main/benchmarks/cie_forge_realbugs).

@@ -1,4 +1,4 @@
-`atomic-forge <phase> [options]` — full surface of the CLI. Source of truth: [`cli.py`](https://github.com/arunsoman/atomic-forge/blob/main/src/atomic_forge/cli.py).
+`atomic-forge <phase> [options]` — full surface of the CLI. Source of truth: [`cli.py`](https://github.com/kannamma-labs/atomic-forge/blob/main/src/atomic_forge/cli.py).
 
 ## Phases
 

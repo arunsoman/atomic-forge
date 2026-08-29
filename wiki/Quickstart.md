@@ -37,7 +37,7 @@ The exact same `AtomicTask` validation runs on the draft; anything that
 fails is written to `tasks.draft.json.rejected.json` with the real reason
 instead of being silently dropped. The draft is scaffolding meant for
 human review before it's ever passed to `run`. See
-[`decompose.py`](https://github.com/arunsoman/atomic-forge/blob/main/src/atomic_forge/decompose.py).
+[`decompose.py`](https://github.com/kannamma-labs/atomic-forge/blob/main/src/atomic_forge/decompose.py).
 
 ## 3. Run the pipeline
 

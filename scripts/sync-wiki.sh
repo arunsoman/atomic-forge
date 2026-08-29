@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Publish ./wiki/*.md to the GitHub wiki (github.com/arunsoman/atomic-forge/wiki).
+# Publish ./wiki/*.md to the GitHub wiki (github.com/kannamma-labs/atomic-forge/wiki).
 #
 # One-time setup (GitHub has no API for this): open
-#   https://github.com/arunsoman/atomic-forge/wiki
+#   https://github.com/kannamma-labs/atomic-forge/wiki
 # click "Create the first page", save anything (e.g. "wiki") — this
 # initializes the wiki git repo. Then run this script any time wiki/ changes.
 #
@@ -12,7 +12,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WIKI_SRC="$REPO_DIR/wiki"
-WIKI_URL="https://github.com/arunsoman/atomic-forge.wiki.git"
+WIKI_URL="https://github.com/kannamma-labs/atomic-forge.wiki.git"
 WIKI_DIR="${TMPDIR:-/tmp}/atomic-forge-wiki"
 
 if [[ ! -d "$WIKI_SRC" ]]; then

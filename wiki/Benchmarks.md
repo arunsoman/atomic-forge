@@ -16,7 +16,7 @@ regression test for **4/4** cases — validated to (a) fail on the buggy
 code on a real assertion and (b) pass on the real merged fix — and
 forge+CIE fixed **4/4** against those *generated* tests.
 
-`→ [docs/cie-forge-realbug-benchmark.md](https://github.com/arunsoman/atomic-forge/blob/main/docs/cie-forge-realbug-benchmark.md)`
+`→ [docs/cie-forge-realbug-benchmark.md](https://github.com/kannamma-labs/atomic-forge/blob/main/docs/cie-forge-realbug-benchmark.md)`
 
 ### CIE-vs-no-CIE token cost
 
@@ -24,11 +24,11 @@ On one mathematically-subtle planted bug: the CIE-backed agent fixed it
 correctly in **~63% fewer tokens**; the same agent without the graph broke
 the suite and did not converge.
 
-`→ [docs/cie-graph-bugfix-benchmark.md](https://github.com/arunsoman/atomic-forge/blob/main/docs/cie-graph-bugfix-benchmark.md)`
+`→ [docs/cie-graph-bugfix-benchmark.md](https://github.com/kannamma-labs/atomic-forge/blob/main/docs/cie-graph-bugfix-benchmark.md)`
 
 ```bash
 # reproduce:
-pip install git+https://github.com/arunsoman/atomic-forge.git \
+pip install git+https://github.com/kannamma-labs/atomic-forge.git \
             git+https://github.com/arunsoman/cie.git pytest
 python benchmarks/cie_forge_realbugs/forge_cie_bench.py boltons_bits_offbyone
 python benchmarks/measure_cie_graph_benefit.py
@@ -41,7 +41,7 @@ python benchmarks/measure_cie_graph_benefit.py
 - **Scoring** = the repo's own test suite executed against the patch;
   generated regression tests must fail-then-pass on the real fix.
 - **Raw outputs** are committed under
-  [`benchmarks/results/`](https://github.com/arunsoman/atomic-forge/tree/main/benchmarks/results).
+  [`benchmarks/results/`](https://github.com/kannamma-labs/atomic-forge/tree/main/benchmarks/results).
 
 ## Benchmarks shipped vs. claimed (honest ledger)
 

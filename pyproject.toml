@@ -33,10 +33,10 @@ dependencies = [
 dev = ["pytest>=7.0"]
 
 [project.urls]
-Homepage = "https://github.com/arunsoman/atomic-forge"
-Documentation = "https://github.com/arunsoman/atomic-forge/wiki"
-Repository = "https://github.com/arunsoman/atomic-forge"
-Issues = "https://github.com/arunsoman/atomic-forge/issues"
+Homepage = "https://github.com/kannamma-labs/atomic-forge"
+Documentation = "https://github.com/kannamma-labs/atomic-forge/wiki"
+Repository = "https://github.com/kannamma-labs/atomic-forge"
+Issues = "https://github.com/kannamma-labs/atomic-forge/issues"
 
 [project.scripts]
 atomic-forge = "atomic_forge.cli:main"

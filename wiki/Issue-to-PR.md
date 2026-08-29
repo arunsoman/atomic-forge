@@ -6,7 +6,7 @@ your **fork**, never pushing to `origin`.
 
 ```bash
 export FORGE_MODEL=qwen3.5:cloud FORGE_BASE_URL=http://localhost:11434/v1 FORGE_API_KEY=ollama
-pip install git+https://github.com/arunsoman/atomic-forge.git \
+pip install git+https://github.com/kannamma-labs/atomic-forge.git \
             git+https://github.com/arunsoman/cie.git pytest
 
 atomic-forge fix https://github.com/mahmoud/boltons/issues/123 --dry-run   # try without pushing
