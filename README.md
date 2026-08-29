@@ -321,6 +321,47 @@ atomic-forge repair --tasks bug.json --project-dir ./checkout \
   --test-cmd "pytest -q" --raise-pr
 ```
 
+## `fix`: issue → PR in one command
+
+`atomic-forge fix <github_issue_url>` is the fully autonomous one-shot:
+hand it an issue, and (with CIE + an LLM endpoint in your env) it fetches the
+issue, clones the repo, **CIE generates a failing regression test from the
+issue text**, forge's repair loop fixes the bug against that test, and on
+green it opens a PR — from your **fork**, never pushing to `origin`.
+
+```bash
+export FORGE_MODEL=qwen3.5:cloud FORGE_BASE_URL=http://localhost:11434/v1 FORGE_API_KEY=ollama
+pip install git+https://github.com/arunsoman/atomic-forge.git \
+            git+https://github.com/arunsoman/cie.git pytest
+
+atomic-forge fix https://github.com/mahmoud/boltons/issues/123 --dry-run   # try without pushing
+atomic-forge fix https://github.com/mahmoud/boltons/issues/123            # fix + open PR from your fork
+```
+
+What it does, in order:
+
+1. **preflight** — bails immediately if the LLM env or CIE isn't available
+   (CIE is **required** for `fix`, not optional).
+2. **fetch + clone** — reads the issue via `gh`, shallow-clones the repo,
+   stands up a venv + installs the project (Python-first; `--install-cmd`/
+   `--project-dir` escape hatches for the rest).
+3. **CIE populates the graph** — `cie index` the checkout; CIE serves graph
+   tools over MCP.
+4. **CIE generates a regression test** grounded in the real signatures, and
+   the harness validates it reproduces the bug (fails on the buggy code on an
+   *assertion* — a collection/import error or a test that passes on the buggy
+   code is rejected and **no PR is raised**).
+5. **forge repairs** — the real repair loop (CIE-backed) re-runs that test
+   each round until green or `--max-rounds` (default 5).
+6. **PR from your fork** — on green, forks the repo, pushes the fix branch to
+   the **fork only** (never to `origin`), and opens `fork → upstream` via `gh`.
+   `--dry-run` does everything except the push/PR.
+
+Flags: `--dry-run`, `--project-dir` (use a checkout you've already set up),
+`--install-cmd` (override/skip install), `--max-rounds`, `--max-turns`,
+`--pr-base`/`--pr-branch`/`--pr-title`, `--issue-body-file` (use a local file
+as the issue body instead of `gh`). See `atomic-forge fix --help`.
+
 ## Architecture
 
 | Module | What it does |
@@ -339,6 +380,10 @@ atomic-forge repair --tasks bug.json --project-dir ./checkout \
 | `repair_agent.py` / `repair.py` | The SOTA repair loop: signals → localize → sample → select → gate |
 | `watchdog.py` | Production loop: detect a live failure → repair → canary → promote/rollback |
 | `pr.py` | Raise a GitHub PR for a landed fix (`atomic-forge repair --raise-pr`, via `gh`) |
+| `cie_backend.py` | Optional CIE-as-MCP-server `ToolBackend` (relay graph tools over stdio); required by `fix` |
+| `testgen.py` | CIE-grounded regression-test generation + oracle validation (fails-on-buggy gate) |
+| `issue.py` | Issue URL parsing, `gh` fetch, shallow clone, venv + install setup for `fix` |
+| `fix.py` | `atomic-forge fix <url>` — one-shot issue → CIE test → repair → fork-only PR |
 | `sandbox.py` / `docker_env.py` / `stacks.py` | Command execution, git, lint gate, test-stack detection, optional Docker sandboxing |
 | `concurrency.py` | The adaptive rate-limit-aware worker pool |
 | `checkpoint.py` / `checkpoint_store.py` | Crash-safe, resumable run state (SQLite) |
