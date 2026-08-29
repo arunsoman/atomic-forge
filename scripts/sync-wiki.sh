@@ -26,6 +26,11 @@ else
   git clone -q "$WIKI_URL" "$WIKI_DIR"
 fi
 
+# remove files deleted/renamed in the source tree, then copy current pages
+for f in "$WIKI_DIR"/*.md; do
+  b="$(basename "$f")"
+  [[ -f "$WIKI_SRC/$b" ]] || rm -f "$f"
+done
 cp -f "$WIKI_SRC"/*.md "$WIKI_DIR/"
 git -C "$WIKI_DIR" add -A
 if git -C "$WIKI_DIR" diff --cached --quiet; then
