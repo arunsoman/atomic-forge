@@ -1,5 +1,7 @@
 # CIE code-graph bugfix benchmark — with vs. without a code graph
 
+[![tests](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml/badge.svg)](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE) [![discussions](https://img.shields.io/github/discussions/arunsoman/atomic-forge)](https://github.com/arunsoman/atomic-forge/discussions)
+
 A *cross-tool* benchmark, deliberately separate from
 [`benchmarks/README.md`](../benchmarks/README.md) (which measures
 atomic-forge's *own* repair loop). This one asks a different question:

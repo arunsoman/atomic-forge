@@ -1,6 +1,12 @@
 # atomic-forge
 
 [![tests](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml/badge.svg)](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![python](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue.svg)](https://www.python.org/downloads/)
+[![GitHub Action](https://img.shields.io/badge/GitHub%20Action-atomic--forge-blue.svg)](./action.yml)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/arunsoman/atomic-forge/compare)
+[![discussions](https://img.shields.io/github/discussions/arunsoman/atomic-forge)](https://github.com/arunsoman/atomic-forge/discussions)
+[![stars](https://img.shields.io/github/stars/arunsoman/atomic-forge?style=social)](https://github.com/arunsoman/atomic-forge/stargazers)
 
 An agentic **generate → test → repair** loop for LLM code generation, built
 around three things most coding-agent libraries treat as an afterthought:

@@ -1,5 +1,7 @@
 # CIE + forge: fixing real open-source bugs (and generating the tests for them)
 
+[![tests](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml/badge.svg)](https://github.com/arunsoman/atomic-forge/actions/workflows/test.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE) [![discussions](https://img.shields.io/github/discussions/arunsoman/atomic-forge)](https://github.com/arunsoman/atomic-forge/discussions)
+
 A second cross-tool benchmark, alongside
 [`docs/cie-graph-bugfix-benchmark.md`](cie-graph-bugfix-benchmark.md) (which
 measured CIE-vs-no-CIE token cost on one planted bug). This one answers two
