@@ -1,5 +1,7 @@
 **atomic-forge** is an agentic **issue → failing test → repair → PR** engine — a library and CLI built around three things most coding-agent tools treat as an afterthought:
 
+*The reliable, test-driven repair engine you can drop under any coding agent.*
+
 - **A strict, machine-checkable task contract.** Every unit of work is an `AtomicTask` — exactly one file, with a required `test_triad` (positive / negative / recovery), enforced at construction time by pydantic, not hoped for in a prompt.
 - **Crash-safe, resumable runs.** Every phase transition is durably checkpointed to SQLite *before* the work starts. Resume re-hashes files on disk and regenerates only what changed — never an all-or-nothing restart.
 - **A real repair loop, not a retry loop.** Failing tests become ranked suspects, patches are K-sampled in parallel and selected by *actually running the suite*, and a blast-radius gate rejects a "passing" patch that silently breaks a caller elsewhere.
@@ -25,7 +27,9 @@ Fetches the issue, clones the repo, bootstraps the environment (deterministic pr
 | [[CLI-Reference]] | Every phase and flag of `atomic-forge` |
 | [[Issue-to-PR]] | The `fix` / `fix-comment` pipelines: issue → regression test → repair → fork-only PR |
 | [[Benchmarks]] | Measured results: 4/4 real open-source bugs, CIE token savings, reproducible harness |
-| [[How-Is-This-Different]] | Honest comparison vs aider, SWE-agent, OpenHands, Devin |
+| [[Evaluation-Plan]] | The public-evaluation contract: SWE-bench + real issues, baselines, ablations, cost-per-fix |
+| [[Packaging-and-Roadmap]] | GitHub-Action-first distribution: drop-in in <5 minutes, example workflows |
+| [[How-Is-This-Different]] | Honest comparison vs aider, Cursor/Claude Code, SWE-agent, OpenHands, Devin |
 
 ## Going deeper
 

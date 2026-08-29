@@ -5,6 +5,37 @@ The generate → compile → test → repair loop itself isn't novel — **aider
 version of it. This page says plainly what's the same, what's different,
 and where forge deliberately is *not* the right tool.
 
+## The landscape, honestly (mid-2026)
+
+| Tool | Strength | Weakness relative to forge's vision |
+|---|---|---|
+| **Cursor / Claude Code** | Excellent interactive experience, strong models, huge distribution | Less focused on pure autonomous-repair reliability + checkpointing |
+| **Devin / Cognition** | Strong autonomous-agent narrative + enterprise motion | Expensive, closed, less library-like |
+| **aider** | Great pair-programming, open, mature | More conversational than strict generate→test→repair |
+| **SWE-agent / OpenHands** | Research / open agent frameworks | Heavier, less opinionated about repair *selection* |
+| **atomic-forge** | Strict task contract, execution-selected patches, resumable, library-first | Almost no distribution yet |
+
+The last cell is the point of the [[Evaluation-Plan]] and
+[[Packaging-and-Roadmap]] pages.
+
+## Positioning angles
+
+1. **Library / infrastructure layer, not another full agent surface** —
+   "use us under Cursor, Claude Code, your own agent, or as a GitHub
+   Action" ([[Packaging-and-Roadmap]]).
+2. **Reliability over vibes** — patches selected by running the real test
+   suite, blast-radius gate, full checkpoint history ([[Repair-Loop]],
+   [[Checkpointing-and-Resumability]]).
+3. **Cost & controllability** — statement-level graph → fewer tokens
+   ([[Statement-Level-Graph]]); resumability → less wasted work on long
+   runs ([[Checkpointing-and-Resumability]]).
+4. **Safety properties** — fork-only PRs, static checks before commit,
+   clear audit trail of decisions ([[Issue-to-PR]]).
+
+**Anti-claim, on purpose:** we do not claim "better than Devin/Cursor" at
+general coding. The claim is narrow but valuable: turning a failing test
+or an issue into a **correct, minimal, verified patch — reliably**.
+
 ## At a glance
 
 | | aider | SWE-agent | OpenHands | Devin | **atomic-forge** |

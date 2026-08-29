@@ -9,8 +9,11 @@
 [![discussions](https://img.shields.io/github/discussions/arunsoman/atomic-forge)](https://github.com/arunsoman/atomic-forge/discussions)
 [![stars](https://img.shields.io/github/stars/arunsoman/atomic-forge?style=social)](https://github.com/arunsoman/atomic-forge/stargazers)
 
-> **Issue → failing test → repair → PR.**
-> An agentic coding-engine library and CLI: a **machine-checked task
+> **The reliable, test-driven repair engine you can drop under any coding agent.**
+> (Issue → failing test → repair → PR — an agentic coding-engine library
+> and CLI with a **machine-checked task contract**, **crash-safe resumable
+> runs**, and patches selected by *executing the test suite* — not by
+> asking a model which patch looks right.) a **machine-checked task
 > contract**, **crash-safe resumable runs**, and a repair loop whose
 > patches are selected by *executing the test suite* — not by asking a
 > model which patch looks right.
@@ -64,7 +67,9 @@ surface for autonomous issue → PR.
 | [**Issue → PR**](https://github.com/arunsoman/atomic-forge/wiki/Issue-to-PR) | `fix` / `fix-comment` pipelines, fork-only PRs, safety properties |
 | [**Bootstrap gate**](https://github.com/arunsoman/atomic-forge/wiki/Bootstrap-Gate) | Environment bootstrap for *any* GitHub URL, agentic fallback |
 | [**Benchmarks**](https://github.com/arunsoman/atomic-forge/wiki/Benchmarks) | Measured results + the shipped-vs-claimed ledger |
-| [**How it's different**](https://github.com/arunsoman/atomic-forge/wiki/How-Is-This-Different) | Honest comparison vs aider / SWE-agent / OpenHands / Devin — and when to use them instead |
+| [**How it's different**](https://github.com/arunsoman/atomic-forge/wiki/How-Is-This-Different) | Honest landscape vs Cursor/Claude Code, Devin, aider, SWE-agent / OpenHands — and when to use them instead |
+| [**Evaluation plan**](https://github.com/arunsoman/atomic-forge/wiki/Evaluation-Plan) | The public-evaluation contract we'll be judged by: SWE-bench + real issues, baselines, ablations, cost-per-fix |
+| [**Packaging & roadmap**](https://github.com/arunsoman/atomic-forge/wiki/Packaging-and-Roadmap) | GitHub-Action-first distribution: drop-in in <5 minutes, example workflows |
 | [**Requirements R1–R16**](https://github.com/arunsoman/atomic-forge/wiki/Requirements-and-Roadmap) | Competitive survey, one page per requirement, status against real code |
 
 ## Notable modules

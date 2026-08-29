@@ -21,6 +21,8 @@
 
 **Background**
 * [[Benchmarks]]
+* [[Evaluation-Plan]]
+* [[Packaging-and-Roadmap]]
 * [[Design-Notes]]
 * [[How-Is-This-Different]]
 
