@@ -269,6 +269,56 @@ taxonomy, our real product already clears its “high moat” bar (AST
 manipulation, migration-grade refactors) — while scoring a product that
 doesn't exist. The lesson is about input rigor, not valuation.
 
+## Addendum 4 — the assistant's position (post-input synthesis, 2026-08-31)
+
+Having worked *inside* the codebase through every failure these reports only
+summarized, my position on three points diverges from all four inputs:
+
+**1. SWE-bench is the right appendix, the wrong headline.** It is pre-triaged
+data — every task reproduces, every fix point is real, curated by humans. That
+is exactly the distribution our machinery is *least needed for*; the campaign's
+real-world distribution (30–50% stale, unmaintained issues, empty suites) is
+what buyers actually face and what we gate cheaply. Do the 100-instance slice,
+as planned — but framed as the **same-model ablation** (loop on/off, cost +
+regression rate), never a leaderboard SOTA run. The hero artifact is the
+campaign ledger; SWE-bench is its standardized durability check.
+
+**2. Every report priced the code; none priced the ledger.** The compounding
+asset is not the repair agent — it is the dataset of
+(issue, probe-verdict, test, patch, exit-verdict, cost) tuples. Each run
+yields either a PR or a labeled failure; both train the selection policy and
+freeze a moat competitors can't download. Reports #1 ("intelligence dataset")
+and #3 (acqui-IP) both gesture at this without the operational conclusion:
+**the ledger is the product**, and every meta-hour not spent producing ledger
+rows is deferred valuation.
+
+**3. The moat is not repair — it's change provenance.** Frontier-model churn
+erodes any claim a bare retry-loop can't replicate within quarters. What
+doesn't erode: futures expect autonomous changes in *regulated* codebases to
+come with machine-checkable provenance — probe, failing test, execution-\
+selected patch, blast-radius net Δ, full artifact chain. No vendor ships
+that today; forge's exit taxonomy + checkpoints *are* it, mislabeled as a dev
+tool. Target the buyer whose constraint is trust, not raw capability
+(finance/healthcare/code-is-liability). The campaign PRs and the public
+funnel are the first page of that trust ledger.
+
+Where I fully **agree** with the evaluators: proof before distribution,
+distribution before monetization, Action+PyPI as the universal surfaces,
+hosted layer as the revenue vehicle, publish failures. Their timeline tables
+were internally inconsistent (100–500 stars in 90 days vs "nothing exists at
+0 stars"); the honest scorecard is our dashboard, not their scenarios.
+
+My standing risk register (not in any report): solo-maintainer fragility,
+LLM budget growing linearly with batch size (the ledger doubles as the
+budget guard — measure $/resolved before scaling out), fresh-account API
+throttling on the fork/PR path, and cold-PR reputation risk (the opt-in
+channel retroactively underpriced by report #3).
+
+Therefore, this week, strictly in order: fire batch1 → publish the evidence
+wiki (funnel + CIE 63% ablation + ledger) → PyPI + self-hosted Action demo →
+license grant decision → *then* SWE-bench slice. Each step must produce an
+artifact before the next begins.
+
 ## Non-goals (deliberate)
 
 - No new agent features until Phase 2 evidence exists (evaluator: features ≠ value).
