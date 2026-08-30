@@ -1,0 +1,47 @@
+{
+  "generated": "2026-08-29",
+  "method": "per-repo open issue counts under each repo's native bug label (GitHub search API), activity via repos API",
+  "pilot_five": [
+    "dask/dask#11884",
+    "sympy/sympy#29382",
+    "sphinx-doc/sphinx#13180",
+    "psf/black#3294",
+    "pylint-dev/astroid#769"
+  ],
+  "tier1_primary_targets": [
+    {"repo": "python/mypy",           "stars": 20617, "open_bug_labeled": 1671, "bug_label": "type: bug",             "notes": "type-checker; many inference bugs map well to forge's Python graph"},
+    {"repo": "pandas-dev/pandas",     "stars": 49591, "open_bug_labeled": 1321, "bug_label": "bug",                   "notes": "DCO sign-off required; PR title prefix BUG:; heavy suite but per-dir tests runnable"},
+    {"repo": "numpy/numpy",           "stars": 32630, "open_bug_labeled": 717,  "bug_label": "00 - Bug",              "notes": "C-core included; target pure-Python surface (numpy/_core, np.lib) only"},
+    {"repo": "mlflow/mlflow",         "stars": 27726, "open_bug_labeled": 677,  "bug_label": "bug",                   "notes": "large surface, good for tracking/model APIs; CI chunky"},
+    {"repo": "sympy/sympy",           "stars": 14898, "open_bug_labeled": 453,  "bug_label": "bug + Easy to Fix (958)", "notes": "per-module test runner is fast; proven target from prior campaign"},
+    {"repo": "sphinx-doc/sphinx",     "stars": 7994,  "open_bug_labeled": 430,  "bug_label": "type:bug",              "notes": "no CLA; extensions (ext/) are small blast radius; proven target"},
+    {"repo": "celery/celery",         "stars": 28836, "open_bug_labeled": 346,  "bug_label": "Issue Type: Bug Report", "notes": "issues often auto-staled; pick recently-confirmed ones"},
+    {"repo": "pydata/xarray",         "stars": 4191,  "open_bug_labeled": 260,  "bug_label": "good first issue",      "notes": "DCO sign-off; NumFOCUS; responsive maintainers"},
+    {"repo": "scikit-learn/scikit-learn","stars": 67095,"open_bug_labeled": 254,"bug_label": "bug",                   "notes": "NumFOCUS; strict review but squares PRs from newcomers"},
+    {"repo": "pydantic/pydantic",     "stars": 28662, "open_bug_labeled": 209,  "bug_label": "bug V2 (206)",          "notes": "fast triage; rust core off-limits, stick to pure-Python paths"},
+    {"repo": "pylint-dev/pylint",     "stars": 5719,  "open_bug_labeled": 150,  "bug_label": "Bug :beetle:",          "notes": "checker-message bugs are compact and testable"},
+    {"repo": "pytest-dev/pytest",     "stars": 14460, "open_bug_labeled": 113,  "bug_label": "type: bug",             "notes": "strict review; small diffs fine"}
+  ],
+  "tier2_secondary": [
+    {"repo": "dask/dask",             "stars": 13904, "open_bug_labeled": 93,   "bug_label": "good first issue (223)", "notes": "DCO; proven target, pilot #11884"},
+    {"repo": "psf/black",             "stars": 41822, "open_bug_labeled": 71,   "bug_label": "T: bug",                "notes": "requires changelog entry; pilot #3294"},
+    {"repo": "huggingface/transformers","stars": 164607,"open_bug_labeled": 60,"bug_label": "bug",                   "notes": "CI very heavy; DCO; target modeling utils only"},
+    {"repo": "tqdm/tqdm",             "stars": 31302, "open_bug_labeled": 60,   "bug_label": "p0/p1/p2-bug-*",        "notes": "tiny codebase, fast suite"},
+    {"repo": "matplotlib/matplotlib", "stars": 23121, "open_bug_labeled": 57,   "bug_label": "status: confirmed bug", "notes": "DCO; confirmed-only label is a quality filter"},
+    {"repo": "pylint-dev/astroid",    "stars": 582,   "open_bug_labeled": 47,   "bug_label": "Bug 🪳",                 "notes": "small repo, fast suite; inference bugs; pilot #769"}
+  ],
+  "screened_out": [
+    {"repo": "django/django",     "reason": "bug reports live on code.djangoproject.com; ~0 open bug-labeled GitHub issues"},
+    {"repo": "pallets/{flask,click,werkzeug}", "reason": "no bug labels, tiny triaged backlogs; strict feature-freeze culture"},
+    {"repo": "urllib3/urllib3", "encode/httpx", "faker-python/faker", "reason": "0 open native-label bugs flagged; unlabeled triage lag, hard to target by label"},
+    {"repo": "psf/requests", "reason": "maintainer bandwidth; 8 open bug-labeled but slow review"},
+    {"repo": "Textualize/rich", "reason": "maintainer curates fixes internally; low external-PR merge rate"}
+  ],
+  "protocol": [
+    "before each PR: grep CONTRIBUTING + docs for AI/LLM policy; skip repo if automated PRs are unwelcome",
+    "max 1 open PR per repo at a time; consent comment on the issue before raising when unstated",
+    "honest provenance footer only (no badges, no star CTAs)",
+    "DCO sign-off (git commit -s) for NumFOCUS-family repos",
+    "report per-issue outcomes to benchmarks/README.md campaign log"
+  ]
+}

@@ -25,6 +25,7 @@ of a GitHub issue — see that function's docstring for scope notes.
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -99,6 +100,48 @@ def _pr_body(issue: dict, report: dict, test_rel: str) -> str:
     )
 
 
+def run_repro_probe(project_dir: Path, venv_py: str, repro: Path,
+                    timeout: int = 600, out_tail: int = 2000) -> tuple[bool, int, str]:
+    """Run the caller's repro probe against the checkout and interpret it
+    as a ground-truth contract:
+
+      exit 0        -> the issue's behavior is NOT present on HEAD: the
+                       issue is stale/already fixed upstream. Abort before
+                       any LLM spend — no index, no testgen, no repair, no
+                       PR (the pilot measured 2/4 targets exactly here).
+      exit non-zero -> the bug reproduces (expected on a live issue); the
+                       output tail is kept so a human can tell a true
+                       repro apart from an environment crash, and so the
+                       abort reason is legible in learning.json/trajectory.
+
+    .py scripts run under the project venv's python (the same interpreter
+    the repair loop's tests use); anything else runs under bash, so a
+    one-line shell repro works too. The exit code alone decides — output
+    only decorates. On timeout the probe is treated as bug-present (the
+    pessimistic reading: a hang is at least not evidence of a fix)."""
+    repro = Path(repro)
+    if repro.suffix == ".py":
+        cmd = [venv_py, str(repro)]
+    else:
+        cmd = ["bash", str(repro)]
+    env = dict(os.environ)
+    venv_bin = str(Path(venv_py).resolve().parent)
+    env["PATH"] = venv_bin + os.pathsep + env.get("PATH", "")
+    if "/bin/python" in venv_py or "/bin/python3" in venv_py:
+        env.setdefault("VIRTUAL_ENV", str(Path(venv_bin).parent))
+    try:
+        r = subprocess.run(cmd, cwd=str(project_dir), capture_output=True,
+                           text=True, timeout=timeout, env=env)
+        out = f"{r.stdout}\n{r.stderr}".strip()
+        return r.returncode != 0, r.returncode, out[-out_tail:]
+    except subprocess.TimeoutExpired as e:
+        def _s(x):
+            return x.decode(errors="replace") if isinstance(x, bytes) else (x or "")
+        out = _s(e.stdout) + _s(e.stderr).strip()
+        return True, -1, (f"(repro probe timed out after {timeout}s — counted as "
+                          f"bug-present)\n{out[-out_tail:]}").strip()
+
+
 def run_fix(url: str, llm: OpenAICompatLLM, *,
             project_dir: Optional[Path] = None,
             install_cmd: Optional[str] = None,
@@ -110,7 +153,8 @@ def run_fix(url: str, llm: OpenAICompatLLM, *,
             work_root: Optional[Path] = None,
             samples: int = 2, max_turns_per_attempt: int = 25,
             architect_mode: bool = False,
-            skip_bootstrap: bool = False, bootstrap_timeout: int = 600) -> dict:
+            skip_bootstrap: bool = False, bootstrap_timeout: int = 600,
+            repro: Optional[Path] = None) -> dict:
     """Run the full fix pipeline. Returns a report dict (always; includes
     `success`, `stage`, and either `pr_url` or `reason` on failure).
 
@@ -118,7 +162,16 @@ def run_fix(url: str, llm: OpenAICompatLLM, *,
     `--project-dir` checkout is a user-vouched "already runnable" tree
     (same trust level as `--install-cmd ""`) and never gates. Pass True
     to skip the R16 test-probe on a fresh clone whose suite you already
-    know runs (or takes too long to probe)."""
+    know runs (or takes too long to probe).
+
+    `repro` (F1 pre-flight gate): path to a repro script executed against
+    the untouched checkout right after the venv exists and BEFORE any
+    LLM spend. Contract: non-zero exit while the bug is present, exit 0
+    once fixed. A probe that exits 0 on HEAD aborts the run as
+    `issue_already_fixed` (stale issue); after repair the same probe
+    must flip to exit 0 before a PR is raised (`repro_still_failing`
+    aborts) — the generated regression test stays the primary oracle,
+    this is the independent second witness."""
     require_cie()
     owner, repo, number = parse_issue_url(url)
     upstream = upstream_slug(owner, repo)
@@ -156,6 +209,7 @@ def run_fix(url: str, llm: OpenAICompatLLM, *,
         pr_title=pr_title, work_root=work_root, samples=samples,
         max_turns_per_attempt=max_turns_per_attempt, architect_mode=architect_mode,
         skip_bootstrap=skip_bootstrap, bootstrap_timeout=bootstrap_timeout,
+        repro=repro,
     )
 
 
@@ -217,7 +271,8 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
                       pr_base: Optional[str], pr_branch: Optional[str],
                       pr_title: Optional[str], work_root: Optional[Path],
                       samples: int, max_turns_per_attempt: int, architect_mode: bool,
-                      skip_bootstrap: bool = False, bootstrap_timeout: int = 600) -> dict:
+                      skip_bootstrap: bool = False, bootstrap_timeout: int = 600,
+                      repro: Optional[Path] = None) -> dict:
     """Shared body of `run_fix`/`run_fix_from_comment` from "get a runnable
     checkout" onward — everything upstream of this (parsing the intake
     source into an `issue` dict + `bug` description) is the only part
@@ -267,6 +322,29 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
     print(f"[forge fix] setting up venv + installing project (this can take a bit)")
     venv_py = setup_python_env(project_dir, install_cmd=install_cmd)
 
+    # 3c. F1 pre-flight repro gate — cheap ground truth before any expensive
+    #     work. The caller's probe must reproduce the bug (non-zero exit) on
+    #     this untouched checkout; exit 0 means the issue is stale upstrean
+    #     and the whole CIE/testgen/repair/PR pipeline is skipped for free.
+    repro_confirmed = False
+    if repro is not None:
+        print(f"[forge fix] repro probe: {Path(repro).name} on HEAD "
+              f"(a non-zero exit is expected while the bug is present) ...")
+        fails_on_head, _code, out_tail = run_repro_probe(project_dir, venv_py, repro)
+        if not fails_on_head:
+            reason = ("repro probe exits 0 on HEAD — issue looks already fixed "
+                      "upstream; aborting before CIE/testgen/repair (no LLM tokens spent)")
+            print(f"[forge fix] abort: {reason}\n"
+                  + "\n".join("  " + ln for ln in out_tail.splitlines()[-10:]))
+            record_exit(project_dir, reason="issue_already_fixed", detail=out_tail[-500:],
+                       extra={"issue": url})
+            return {"url": url, "upstream": upstream, "branch": pr_branch or pr_branch_default,
+                    "test_file": f"tests/test_forge_{test_id}.py", "success": False,
+                    "stage": "repro", "reason": reason, "repro_exit_code": 0,
+                    **result_extra}
+        repro_confirmed = True
+        print("[forge fix] repro probe failed as expected — bug is present on HEAD")
+
     # branch for the fix (commits from the repair loop land here, not on default)
     branch = pr_branch or pr_branch_default
     prepare_pr_branch(project_dir, branch)
@@ -278,6 +356,8 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
               "bootstrap": _gate["verdict"] if _gate else "skipped",
               "checkpoint_run_id": _gate["checkpoint_run_id"] if _gate else None,
               **result_extra}
+    if repro_confirmed:
+        result["repro_fails_on_head"] = True
 
     # 4. CIE index + MCP server. CIE is the ONLY code-understanding backend
     # forge's testgen/repair agents use — there is no silent degraded mode
@@ -403,6 +483,24 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
             return result
         result["success"] = True
         result["stage"] = "fixed"
+
+        # F1 second witness: the caller's independent repro probe must flip
+        # to exit 0 before anything is raised. The generated regression test
+        # remains the primary oracle; this is the independent cross-check.
+        if repro is not None:
+            print("[forge fix] re-running repro probe against the repaired tree ...")
+            _now_green, code2, out2 = run_repro_probe(project_dir, venv_py, repro)
+            result["repro_fixed_after_repair"] = code2 == 0
+            if code2 != 0:
+                result.update(success=False, stage="repair",
+                              reason="repair made the generated test pass but the caller's "
+                                     f"repro probe still exits non-zero (exit {code2})")
+                record_exit(project_dir, reason="repro_still_failing", detail=out2[-500:],
+                           extra={"issue": url})
+                print("[forge fix] abort: repro probe still fails after repair; "
+                      "no PR raised (the generated test passing alone is not "
+                      "independently convincing).")
+                return result
 
         # 7. fork-only PR (never push to origin)
         title = _pr_title(issue, pr_title)

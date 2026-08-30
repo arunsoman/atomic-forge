@@ -44,16 +44,13 @@ def upstream_slug(owner: str, repo: str) -> str:
 _MAX_COMMENT_CHARS = 6000
 
 
-def fetch_issue(owner: str, repo: str, number: int) -> dict:
-    """Fetch issue title + body + comments via `gh issue view --json`.
-    Returns {"title", "body", "comments", "url", "number", "owner", "repo"}
-    — `comments` is gh's own list of {"author", "body", ...} dicts, oldest
-    first. Comments matter for testgen: the original report is often thin,
-    and a maintainer's repro steps or a "same thing happens when ..." from
-    another user often land as a follow-up comment, not an edit to the body."""
+def _fetch_issue_ghql(owner: str, repo: str, number: int) -> dict:
+    """gh's GraphQL-backed `issue view` — richest single-call fetch (title,
+    body, comments in one query) but it spends GraphQL quota, which fresh
+    accounts and bursty campaigns exhaust long before core REST."""
     r = subprocess.run(
         ["gh", "issue", "view", str(number), "--repo", f"{owner}/{repo}",
-         "--json", "title,body,url,comments"],
+         "--json", "title,body,url,comments,state"],
         capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError(f"gh issue view {owner}/{repo}#{number} failed: "
@@ -61,8 +58,80 @@ def fetch_issue(owner: str, repo: str, number: int) -> dict:
     import json
     data = json.loads(r.stdout)
     return {"title": data.get("title", ""), "body": data.get("body", ""),
-            "comments": data.get("comments", []),
+            "comments": data.get("comments", []), "state": data.get("state", ""),
             "url": data.get("url", ""), "number": number, "owner": owner, "repo": repo}
+
+
+def _rest_comments_to_gh_shape(comments: list) -> list:
+    """REST /issues/{n}/comments entries ({user:{login}, body}) -> gh's
+    comments shape ({author:{login}, body}), so every fetch channel feeds
+    issue_to_bug_description() the same structure."""
+    return [{"author": {"login": (c.get("user") or {}).get("login", "")},
+             "body": c.get("body", "")}
+            for c in (comments or []) if c.get("body")]
+
+
+def _fetch_issue_rest(owner: str, repo: str, number: int, *, anon: bool = False) -> dict:
+    """Core REST fetch — separate (and much larger) quota pool than GraphQL.
+    `anon=False` goes through authenticated `gh api`; `anon=True` drops to
+    unauthenticated curl, which works for public repos (60/hr per IP) — the
+    last-resort channel when even the gh token can't move (invalid token,
+    gh CLI broken, etc.). Comments come from a second call and are reshaped
+    into gh's shape. Raises on rate-limit / any non-JSON response."""
+    import json
+    base = (f"https://api.github.com/repos/{owner}/{repo}/issues/{number}" if anon
+            else f"repos/{owner}/{repo}/issues/{number}")
+    if anon:
+        run = lambda path: subprocess.run(["curl", "-sfL", path],
+                                          capture_output=True, text=True, timeout=60)
+    else:
+        run = lambda path: subprocess.run(["gh", "api", path],
+                                          capture_output=True, text=True, timeout=60)
+    r = run(base)
+    if r.returncode != 0:
+        raise RuntimeError(f"REST issue fetch failed: {(r.stderr or r.stdout).strip()[:300]}")
+    data = json.loads(r.stdout)
+    if not isinstance(data, dict) or ("message" in data and "title" not in data):
+        raise RuntimeError(f"REST issue fetch returned an API error: {str(data)[:300]}")
+    comments = []
+    rc = run(f"{base}/comments?per_page=50")
+    if rc.returncode == 0:  # comments are best-effort: body alone beats nothing
+        try:
+            comments = _rest_comments_to_gh_shape(json.loads(rc.stdout))
+        except Exception:
+            comments = []
+    return {"title": data.get("title", ""), "body": data.get("body", ""),
+            "comments": comments, "state": data.get("state", ""),
+            "url": data.get("html_url", ""), "number": number, "owner": owner, "repo": repo}
+
+
+def fetch_issue(owner: str, repo: str, number: int) -> dict:
+    """Fetch issue title + body + comments, falling back across channels:
+
+    1. `gh issue view` (GraphQL) — richest single call, first quota to die
+    2. `gh api` (authenticated core REST) — separate quota pool
+    3. unauthenticated REST via curl — public repos, 60/hr per IP
+
+    Returns {"title", "body", "comments", "state", "url", "number",
+    "owner", "repo"} — `comments` is gh's own list of {"author", "body",
+    ...} dicts (reshaped on the REST paths), oldest first. Comments matter
+    for testgen: the original report is often thin, and a maintainer's
+    repro steps or a "same thing happens when ..." from another user often
+    land as a follow-up comment, not an edit to the body. "state" rides
+    along so callers can cheaply re-verify the issue is still open.
+    Private repos fail on the anonymous leg (as they should)."""
+    errors = []
+    for fetcher in (_fetch_issue_ghql,
+                    lambda o, r, n: _fetch_issue_rest(o, r, n, anon=False),
+                    lambda o, r, n: _fetch_issue_rest(o, r, n, anon=True)):
+        try:
+            return fetcher(owner, repo, number)
+        except FileNotFoundError as e:  # gh / curl binary missing
+            errors.append(f"{type(e).__name__}: {e}")
+        except Exception as e:
+            errors.append(f"{type(e).__name__}: {e}")
+    raise RuntimeError(f"could not fetch {owner}/{repo}#{number} on any channel:\n  "
+                       + "\n  ".join(errors))
 
 
 def issue_to_bug_description(issue: dict) -> str:
@@ -92,13 +161,26 @@ def issue_to_bug_description(issue: dict) -> str:
     return text + "\n\n## Comments\n" + "\n\n".join(blocks)
 
 
+def _clone_head_ok(dest: Path) -> bool:
+    """True iff the checkout has a resolvable HEAD. `git clone` can exit 0
+    and still leave a zero-commit worktree (real case: sphinx's
+    tests/roots/test-warnings/wrongenc.inc encoding failure), which then
+    detonates much later as `git checkout -b: branch yet to be born`."""
+    r = subprocess.run(["git", "-C", str(dest), "rev-parse", "--verify", "HEAD"],
+                       capture_output=True, text=True)
+    return r.returncode == 0 and bool(r.stdout.strip())
+
+
 def clone_repo(owner: str, repo: str, dest: Path, depth: int = 1) -> Path:
     """Shallow-clone the repo's default branch into `dest`.
 
     Idempotent: an existing clone is reused (fetched + reset to the
     remote default branch) rather than failing — sweep runs and resumed
     campaigns re-invoke this against dirs from aborted attempts, so a
-    stale clone must never be a hard error."""
+    stale clone must never be a hard error. An existing checkout that
+    *looks* clonable but has no HEAD is wiped and re-cloned (same class
+    as a corrupt clone). A fresh clone is verified to have a resolvable
+    HEAD and retried once — a zero-commit checkout is never returned."""
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     url = f"https://github.com/{owner}/{repo}.git"
@@ -113,12 +195,22 @@ def clone_repo(owner: str, repo: str, dest: Path, depth: int = 1) -> Path:
                 shutil.rmtree(dest, ignore_errors=True)
                 break
         else:
+            if _clone_head_ok(dest):
+                return dest
+            shutil.rmtree(dest, ignore_errors=True)  # zero-commit fake-clone: rebuild
+    last_err = ""
+    for _attempt in (1, 2):  # broken-partial clones get exactly one retry
+        r = subprocess.run(["git", "clone", "--depth", str(depth), url, str(dest)],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            last_err = (r.stderr or r.stdout).strip()
+        elif not _clone_head_ok(dest):
+            last_err = ("git exited 0 but the checkout has no resolvable HEAD "
+                        "(partial/broken clone — see git's own output above)")
+        else:
             return dest
-    r = subprocess.run(["git", "clone", "--depth", str(depth), url, str(dest)],
-                       capture_output=True, text=True)
-    if r.returncode != 0:
-        raise RuntimeError(f"git clone {url} failed: {(r.stderr or r.stdout).strip()}")
-    return dest
+        shutil.rmtree(dest, ignore_errors=True)
+    raise RuntimeError(f"git clone {url} failed (one retry spent): {last_err}")
 
 
 def _detect_install_cmd(project_dir: Path) -> Optional[str]:

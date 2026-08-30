@@ -106,6 +106,13 @@ def main(argv=None) -> int:
                         "(the URL is still needed for owner/repo/number). Pass '-' to read "
                         "the body from stdin instead, e.g. `echo \"bug text\" | atomic-forge "
                         "fix <url> --issue-body-file -`.")
+    p.add_argument("--repro", default=None,
+                   help="[fix] path to a repro probe script (.py runs under the project "
+                        "venv; anything else under bash). Contract: exit non-zero while "
+                        "the bug is present, exit 0 once fixed. forge runs it on HEAD "
+                        "before any LLM spend — exit 0 aborts as issue_already_fixed — "
+                        "and again after repair; a non-zero exit then blocks the PR as "
+                        "repro_still_failing (independent second witness).")
     p.add_argument("--skip-bootstrap", action="store_true",
                    help="[fix] skip the R16 bootstrap gate (test-probe) on a cold clone "
                         "whose suite you already know runs. --project-dir checkouts "
@@ -225,12 +232,13 @@ def main(argv=None) -> int:
         project_dir = (Path(args.project_dir) if args.project_dir and args.project_dir != "./forge_out"
                        else None)
         issue_body_file = Path(args.issue_body_file) if args.issue_body_file else None
+        repro = Path(args.repro) if args.repro else None
         r = run_fix(args.url, llm, project_dir=project_dir, install_cmd=args.install_cmd,
                     max_rounds=args.max_rounds or 5, max_turns=args.max_turns,
                     dry_run=args.dry_run, pr_base=args.pr_base, pr_branch=args.pr_branch,
                     pr_title=args.pr_title, issue_body_file=issue_body_file, samples=args.samples,
                     architect_mode=args.architect, skip_bootstrap=args.skip_bootstrap,
-                    bootstrap_timeout=args.bootstrap_timeout)
+                    bootstrap_timeout=args.bootstrap_timeout, repro=repro)
         print(f"[forge] pr-url={r.get('pr_url') or ''}")
         return 0 if r.get("success") else 1
 

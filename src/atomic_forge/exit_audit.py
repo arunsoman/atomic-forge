@@ -28,6 +28,8 @@ EXIT_REASONS = {
     "ambiguous_branch_defaulted",  # gh couldn't resolve the default branch; guessed main/master
     "cie_unavailable",          # CIE/MCP server setup failed — indexing, bridge, or describe()
     "bootstrap_fail",
+    "issue_already_fixed",      # F1 pre-flight repro probe exited 0 on HEAD: stale issue
+    "repro_still_failing",      # F1 second witness: generated test green but probe still fails
     "repair_exhausted",
     "pr_create_failed",
 }
