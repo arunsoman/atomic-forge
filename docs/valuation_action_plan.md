@@ -230,6 +230,45 @@ projects with DCO sign-off — the exact foundation ecosystem trajectory #4
 dreams about. Clean, consent-earned, execution-verified merges there double as
 Seed evidence for both the sustainability narrative and enterprise repair cases.
 
+## Addendum 3 — intake quality note: fourth report (2026-08-31)
+
+**Verdict: invalid input — premise failure.** The evaluator never read the
+README; it extrapolated from the name alone and analyzed a *frontend Atomic
+Design scaffolder* (shadcn/ui-era component generation, Figma sync, Bit.dev
+competition). That product does not exist. Atomic Forge is an autonomous
+software-repair engine (issue → regression test → execution-selected patch →
+PR) for Python. Every valuation tier, market context, and competitor mentioned
+is out of domain. **Nothing integrated; no phase changes.**
+
+Forward-looking use: reports #1–3 were README/experience-grounded and passed a
+premise check; #4 failed it. **Standing intake rule: every future external
+evaluation gets a premise check first** (did the evaluator actually read the
+code/README or run the tool?). Reports that fail are logged here, not blended
+into strategy — otherwise noise compounds into the plan.
+
+Three transferables that survive the premise failure:
+
+1. **The moat taxonomy generalizes, and the tiers are a useful ladder:**
+   commodity (anyone can write it in a weekend) → replication-hard
+   machinery (AST-level understanding) → *compounder* (proprietary measured
+   data). Our honest position: the code sits at tier 2 — replaceable with
+   effort — while the **failure taxonomy + selection policy + run ledger**
+   (what it learned from 55+ real attempts) is the only tier-3 asset, and it
+   only exists if runs keep happening. One more argument for firing the
+   campaign.
+2. **DD checklist → dashboard rows:** PyPI download *growth* (post-publish),
+   entity continuity (Kannamma Labs as a legal counterparty is genuinely an
+   asset), and presence of a hosted layer — all already tracked or in Phase 4.
+3. **“Open-source code alone is incredibly hard to monetize”** — third
+   independent confirmation (after reports #1 and #2) that the hosted/managed
+   service around the core is the revenue vehicle, reinforcing the Phase-4
+   hosted-loop item.
+
+Closing note, kept for morale alone: by the *invalid* report's own moat
+taxonomy, our real product already clears its “high moat” bar (AST
+manipulation, migration-grade refactors) — while scoring a product that
+doesn't exist. The lesson is about input rigor, not valuation.
+
 ## Non-goals (deliberate)
 
 - No new agent features until Phase 2 evidence exists (evaluator: features ≠ value).
