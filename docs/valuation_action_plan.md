@@ -159,6 +159,7 @@ narrow positioning both reports endorse.
 | PyPI downloads / month | track from publish week |
 | Action-adopting repos | track from Phase 3 |
 | opt-in maintainer repos | track from campaign tier-3 |
+| GitHub Action installs (stretch) | **100+ in 90 days** — report #3's gate, coincides with our Phase-3 gate (#3 = independently derived) |
 | commercial-page inquiries | track from page launch |
 
 ### Decision asks for the owner (not assistant-defaultable)
@@ -174,6 +175,60 @@ narrow positioning both reports endorse.
 4. **Maintainer-opt-in list**: pick 5–10 mid-sized Python projects (assistant
    can draft a scoring rubric: issue throughput, maintainer responsiveness,
    test-suite speed, MIT-family license).
+
+## Addendum 2 — third report: trajectory portfolio (2026-08-31)
+
+A third perspective maps four futures and asks which is in play. It's
+strategy-level, so the deltas are portfolio decisions and measurement sticks,
+not new engineering work.
+
+### Trajectory ranking (deliberate portfolio choice)
+
+| # | Trajectory | Report | Our stance |
+|---|---|---|---|
+| 1 | Enterprise repair bot (GitHub App backlog automation) | “$50–200/seat/mo, 500–1k orgs by 2028” | **primary commercial path** — the proven-fix moat (execution-selected + blast-radius) is exactly its differentiation vs Copilot Autofix; Phase 3 + maintainer channel feed it |
+| 2 | Embedded kernel under coding surfaces | “$100k–$1M/yr royalties” | **upside, gated on proof** — requires demonstrated cost/quality superiority (Phase-2 ablation + $/fix curve); the Red-Hat-model licensing ask should be pitched only after numbers exist |
+| 3 | Evaluation harness for research | “cited in 5–10% of SWE-bench submissions” | **credibility engine, not a business** — its risk (“nobody pays for test harnesses”) is correct; use it to earn citations that de-risk #1/#2, nothing more |
+| 4 | OSS sustainability layer | “10,000 projects by 2028” | **mission + dataset accrual, not revenue** — the 10k figure is fantasy at current traction; the honest near-term expression is the maintainer-opt-in channel + campaign ledger |
+
+The report's most-likely exit (acqui-hire/tech-license for the checkpointing +
+execution-selection IP) means **every phase ideally produces artifacts a
+platform acquirer would want to inspect**: measured cost curves, the 7-way
+verdict taxonomy in action, crash-safe checkpointing evidence from real runs.
+The campaign ledger satisfies this by construction.
+
+### The 90-day gate — two independent reports now converge
+
+Report #3: “10+ real merged PRs on high-profile repos and >100 GitHub Action
+installs ⇒ a shot at trajectory #2/#3.” The **10+ merged PRs gate already ==
+our Phase-3 gate** (set before this report arrived). Adopting one new row:
+`GitHub Action installs: 100+` as the matching Phase-3 stretch metric.
+
+### Decisive variables → plan ownership
+
+| Variable (report #3) | Owning phase | Current measured state |
+|---|---|---|
+| SWE-bench ≥30% at <$5/fix | Phase 2 | unmeasured — that's why Phase 2 exists; do not promise before measuring |
+| Platform adoption | Phase 3 → 4 | 0 external; gate 3 repos → then pitch |
+| License sales before 2030 GPL conversion | Phase 4 | 0; friction fix in Addendum decision ask #1 |
+| Community traction (1k+ stars by end-2026) | — | **calibrated away**: usage metrics (installs, merged PRs, opted-in maintainers) instead of stars |
+
+### Competitive watch (new entry point in the landscape)
+
+Report #3 names a risk reports #1–2 missed: **GitHub's own Copilot Autofix /
+CodeQL repair flows improve rapidly** — never build the *workflow* moat
+(issue→PR bot is a commodity); build the *verification* moat (statement-level
+def-use graphs, blast-radius gating, execution-selected patches). Campaign PRs
+should translate this into one-line proof: every PR footer already demonstrates
+the machinery; the wiki publishes the gatekeeping (what got *blocked* and why —
+blocked runs are evidence too).
+
+### NumFOCUS synergy (ground-truth note)
+
+Tier-1 targets (pandas, numpy, xarray, dask, matplotlib…) are NumFOCUS-family
+projects with DCO sign-off — the exact foundation ecosystem trajectory #4
+dreams about. Clean, consent-earned, execution-verified merges there double as
+Seed evidence for both the sustainability narrative and enterprise repair cases.
 
 ## Non-goals (deliberate)
 
