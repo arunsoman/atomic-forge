@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 from atomic_forge.pr import (classify_pr_create_error, default_branch,
-                             default_branch_for, forge_footer, prepare_pr_branch,
-                             raise_pr, summarize_repair_for_pr)
+                             default_branch_for, ensure_fork, forge_footer,
+                             prepare_pr_branch, raise_pr, summarize_repair_for_pr)
 
 
 def _git(args, cwd):
@@ -88,6 +88,7 @@ def test_forge_footer_has_marker_badge_and_link():
     assert "<!-- atomic-forge:pr -->" in footer  # the tracker marker
     assert "kannamma-labs/atomic-forge" in footer
     assert "Fixed by" in footer
+    assert "star" in footer  # the star-boost call to action
 
 
 def test_summarize_repair_for_pr_includes_forge_footer():
@@ -161,3 +162,57 @@ def test_default_branch_for_raises_when_nothing_resolves(monkeypatch):
     monkeypatch.setattr("atomic_forge.pr.subprocess.run", _fake_run)
     with pytest.raises(RuntimeError, match="could not resolve"):
         default_branch_for("o/r")
+
+
+def test_ensure_fork_raises_clearly_when_gh_repo_fork_fails(tmp_path, monkeypatch):
+    """Confirmed live (astroid#3199, 2026-08-30): a brand-new GitHub account
+    hit `gh repo fork`'s HTTP 403 abuse throttle ("You cannot fork this
+    repository at this time"), account-wide, not repo-specific. The old
+    code discarded `gh repo fork`'s result entirely, so this failure was
+    silently swallowed — the caller went on to `git push` against a fork
+    that was never created and got a confusing "repository not found"
+    several steps later instead of a clear failure at the actual point of
+    failure. ensure_fork must raise immediately, with the real gh output."""
+    def _fake_run(cmd, **kw):
+        class R: pass
+        r = R()
+        if cmd[:3] == ["gh", "repo", "fork"]:
+            r.returncode, r.stdout, r.stderr = 1, "", (
+                "failed to fork: HTTP 403: You cannot fork this repository "
+                "at this time (https://api.github.com/repos/o/r/forks)")
+        elif cmd == ["gh", "api", "user", "-q", ".login"]:
+            r.returncode, r.stdout, r.stderr = 0, "someuser\n", ""
+        else:
+            raise AssertionError(f"unexpected command {cmd}")
+        return r
+    monkeypatch.setattr("atomic_forge.pr.subprocess.run", _fake_run)
+    with pytest.raises(RuntimeError, match="cannot fork this repository"):
+        ensure_fork(tmp_path, "o/r")
+
+
+def test_ensure_fork_succeeds_when_fork_already_exists(tmp_repo, monkeypatch):
+    """`gh repo fork` on an already-forked repo exits 0 with an
+    "already exists" message (confirmed live) — this is success, not a
+    failure to special-case; ensure_fork must proceed and set up the
+    local `fork` remote normally."""
+    real_run = subprocess.run
+
+    def _fake_run(cmd, **kw):
+        if cmd[:1] == ["git"]:
+            return real_run(cmd, **kw)  # ensure_fork's own _git() calls — run for real
+        class R: pass
+        r = R()
+        if cmd[:3] == ["gh", "repo", "fork"]:
+            r.returncode, r.stdout, r.stderr = 0, "someuser/r already exists\n", ""
+        elif cmd == ["gh", "api", "user", "-q", ".login"]:
+            r.returncode, r.stdout, r.stderr = 0, "someuser\n", ""
+        else:
+            raise AssertionError(f"unexpected command {cmd}")
+        return r
+    monkeypatch.setattr("atomic_forge.pr.subprocess.run", _fake_run)
+    owner, fork_url = ensure_fork(tmp_repo, "o/r")
+    assert owner == "someuser"
+    assert fork_url == "https://github.com/someuser/r.git"
+    remote = subprocess.run(["git", "remote", "get-url", "fork"], cwd=str(tmp_repo),
+                            capture_output=True, text=True, check=True).stdout.strip()
+    assert remote == fork_url

@@ -24,7 +24,7 @@ def test_run_agent_success_on_first_patch(tmp_path):
 
     holder = {}
 
-    def check(patch):
+    def check(patch, path=None):
         holder["patch"] = patch
         return True, ""
 
@@ -45,7 +45,7 @@ def test_run_agent_retries_after_submit_rejection(tmp_path):
 
     attempts = []
 
-    def check(patch):
+    def check(patch, path=None):
         attempts.append(patch)
         if "good" in (patch or ""):
             return True, ""
@@ -74,7 +74,7 @@ def test_run_agent_aborts_early_after_repeated_rejected_submits(tmp_path):
         "PATCH\n```python\nattempt 4\n```", "SUBMIT",
     ])
 
-    def check(patch):
+    def check(patch, path=None):
         return False, "still wrong"  # never accepts
 
     result = run_agent(llm, tools, tmp_path, "system", "task", traj, submit_check=check, max_turns=20)
@@ -88,12 +88,40 @@ def test_run_agent_aborts_on_turn_budget(tmp_path):
     traj = Trajectory(tmp_path)
     llm = ScriptedChatLLM(["PATCH\n```python\nx\n```"])  # never submits
 
-    def check(patch):
+    def check(patch, path=None):
         return False, "never good enough"
 
     result = run_agent(llm, tools, tmp_path, "system", "task", traj, submit_check=check, max_turns=3)
     assert not result.success
     assert "turn budget" in result.abort_reason
+
+
+def test_run_agent_forces_patch_with_two_turns_remaining(tmp_path):
+    """A soft NOTE folded into tool observations at turns_since_patch==6/12
+    wasn't enough to stop a session from exploring right up to the turn
+    cap with no patch ever recorded — confirmed live on repair_agent's
+    astroid-769 campaign run (2026-08-30): ~145 repair turns across two
+    rounds, most view_file/search_symbol, most samples died with zero
+    patches produced. Mirrors testgen's own proven F4b fix (see git log
+    a31d73b): at 2 turns remaining with still no patch, inject an
+    unambiguous forcing directive rather than just another soft nudge."""
+    tools = LocalToolBackend(tmp_path)
+    traj = Trajectory(tmp_path)
+    llm = ScriptedChatLLM([
+        "RUN echo one",
+        "RUN echo two",
+        "RUN echo three",
+        "RUN echo four",  # still no patch — this is the turn the force must fire on
+        "PATCH\n```python\nx\n```",
+        "SUBMIT",
+    ])
+
+    result = run_agent(llm, tools, tmp_path, "system", "task", traj,
+                       submit_check=lambda patch, path=None: (True, ""), max_turns=6)
+    assert result.success
+    forced = [m["content"] for m in result.messages
+              if m.get("role") == "user" and "no PATCH has been recorded yet" in m.get("content", "")]
+    assert forced, "expected the hard-forcing directive at 2 turns remaining"
 
 
 def test_run_agent_aborts_on_repeated_invalid_action(tmp_path):

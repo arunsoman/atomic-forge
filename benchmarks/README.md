@@ -72,31 +72,40 @@ gate → CIE-generated regression test → repair loop → fork + PR against
 the issue's own upstream repo. Every attempt (pass or fail) is logged to
 `real_issues/sweep/results_round2.jsonl`, resumable.
 
-Round 2 (2026-08-29): 55 of 61 curated issues attempted, 3 landed a
-verified fix and a PR:
+Verified fixes landed and PR'd so far:
 
 | Repo | Issue | PR | Fork | Status |
 |---|---|---|---|---|
 | [python-babel/babel](https://github.com/python-babel/babel) | [#1219](https://github.com/python-babel/babel/issues/1219) | [babel#1334](https://github.com/python-babel/babel/pull/1334) | `kannamma-labs` | open |
 | [jd/tenacity](https://github.com/jd/tenacity) | [#531](https://github.com/jd/tenacity/issues/531) | [tenacity#705](https://github.com/jd/tenacity/pull/705) | `kannamma-labs` | open |
 | [Delgan/loguru](https://github.com/Delgan/loguru) | [#1501](https://github.com/Delgan/loguru/issues/1501) | [loguru#1505](https://github.com/Delgan/loguru/pull/1505) | personal fork | closed by maintainer, unmerged — not resubmitted |
+| [pylint-dev/astroid](https://github.com/pylint-dev/astroid) | [#3199](https://github.com/pylint-dev/astroid/issues/3199) | [astroid#3261](https://github.com/pylint-dev/astroid/pull/3261) | personal fork | open |
+| [pylint-dev/astroid](https://github.com/pylint-dev/astroid) | [#3259](https://github.com/pylint-dev/astroid/issues/3259) | [astroid#3262](https://github.com/pylint-dev/astroid/pull/3262) | personal fork | open |
+| [pylint-dev/astroid](https://github.com/pylint-dev/astroid) | [#3258](https://github.com/pylint-dev/astroid/issues/3258) | [astroid#3263](https://github.com/pylint-dev/astroid/pull/3263) | personal fork | open |
+| [pylint-dev/astroid](https://github.com/pylint-dev/astroid) | [#3257](https://github.com/pylint-dev/astroid/issues/3257) | [astroid#3264](https://github.com/pylint-dev/astroid/pull/3264) | personal fork | open |
 
 (The babel/tenacity PRs were originally opened from a personal fork,
 then migrated to org-owned forks under `kannamma-labs` — same commits,
 new PR — once the org fork setup was in place; the closed originals link
 to their replacements. loguru's PR predates the org migration and was
 left as-is once the maintainer closed it, out of respect for that
-decision — all future runs raise PRs from `kannamma-labs` forks only.)
+decision. The astroid PRs are on a personal fork because the
+`kannamma-labs`-equivalent account hit GitHub's new-account fork-velocity
+throttle mid-campaign — see `campaign_log.md`.)
 
-Remaining 52 attempts: 27 `oracle_reject` (CIE couldn't confirm the bug
-reproduces at HEAD within budget), 23 `repair_fail` (reproduced, but the
-repair loop didn't land a green fix within its round budget), 2
-`bootstrap_fail`. Two real forge bugs were found and fixed along the way
-(see `src/atomic_forge/bootstrap.py`/`stacks.py`): a base-image picker
-that asked an LLM before trusting unambiguous repo markers, and a bare
+Several real forge bugs were found and fixed along the way (see
+`campaign_log.md` for the full root-cause writeups): a base-image picker
+that asked an LLM before trusting unambiguous repo markers, a bare
 dev-convenience `Makefile` false-positiving as a C/C++ signal on pure
-Python repos (`benoitc/gunicorn`) — both covered by regression tests in
-`tests/test_bootstrap_agentic.py`.
+Python repos (`benoitc/gunicorn`), file-level (rather than statement-
+level) spectrum-based fault localization collapsing to identical,
+non-discriminating scores on import-heavy packages, a test-sampling
+subprocess accidentally contaminating its own comparison spectrum, the
+`patch` tool having no way to target a file other than the pre-assigned
+suspect, and a relative `--repro` path resolving against the wrong
+working directory. All covered by regression tests
+(`tests/test_bootstrap_agentic.py`, `tests/test_spectrum.py`,
+`tests/test_repair_agent.py`, `tests/test_cli_fix.py`).
 
 ## Adding a case
 

@@ -1,5 +1,36 @@
 import threading
 
+from atomic_forge.llm import ChatTurn, ToolCall
+
+
+class ScriptedToolCallLLM:
+    """A minimal `chat_with_tools`-capable scripted LLM: returns each entry
+    in `turns` in order, one per call. Each entry is either a plain string
+    (content only, no tool calls) or a `(tool_name, arguments_dict)` pair /
+    list of such pairs (one or more tool calls that turn, arguments
+    JSON-encoded automatically). Needed to drive `run_agent`'s real
+    function-calling path (`use_fc`), which the plain-text
+    `ScriptedChatLLM`/`TurnByPositionScriptedLLM` helpers can't reach —
+    `patch`'s optional `path` argument only exists on that path."""
+
+    def __init__(self, turns: list):
+        self.turns = list(turns)
+        self.calls = 0
+        self._lock = threading.Lock()
+
+    def chat_with_tools(self, messages, tools, temperature=0.0, max_tokens=8192):
+        import json
+        with self._lock:
+            idx = self.calls
+            self.calls += 1
+        entry = self.turns[idx] if idx < len(self.turns) else self.turns[-1]
+        if isinstance(entry, str):
+            return ChatTurn(content=entry, tool_calls=[])
+        calls = entry if isinstance(entry, list) else [entry]
+        tool_calls = [ToolCall(id=f"call_{idx}_{i}", name=name, arguments=json.dumps(args))
+                     for i, (name, args) in enumerate(calls)]
+        return ChatTurn(content="", tool_calls=tool_calls)
+
 
 class ScriptedChatLLM:
     """Returns each entry in `turns` in order, one per chat() call.

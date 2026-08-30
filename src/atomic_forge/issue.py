@@ -284,7 +284,15 @@ def setup_python_env(project_dir: Path, install_cmd: Optional[str] = None,
                 "  — re-run with --install-cmd '' to skip, or --project-dir pointing "
                 "at a checkout you've already set up.")
     # The repair loop + testgen run the generated test under this venv's pytest.
-    subprocess.run([py, "-m", "pip", "install", "pytest", "-q"],
+    # pytest-cov rides along: confirmed live on astroid#769 (2026-08-30) that
+    # this venv (not the R16 bootstrap gate's separate .forge_venv, which
+    # already gets pytest-cov via stacks.py) is what spectrum.spectrum_localize
+    # actually instruments via make_test_cmd — without it here, every
+    # `fix`-command run silently gets spectrum_localize() -> {} forever
+    # (best-effort, no warning), permanently losing the one localization
+    # signal grounded in what actually executed rather than structure/lexical
+    # similarity.
+    subprocess.run([py, "-m", "pip", "install", "pytest", "pytest-cov", "-q"],
                    capture_output=True, text=True, timeout=timeout)
     return py
 

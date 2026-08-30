@@ -55,6 +55,37 @@ def test_ensure_repo_and_commit(tmp_path):
     assert commit(tmp_path, "test commit")
 
 
+def test_commit_adds_dco_signoff_trailer(tmp_path):
+    """Every commit must carry a `Signed-off-by:` trailer — required by DCO-
+    gated upstreams (e.g. pandas, xarray, scikit-learn among the real-issue
+    campaign's own targets); a PR missing it fails that repo's DCO check on
+    arrival regardless of whether the fix itself is correct."""
+    if not ensure_repo(tmp_path):
+        return  # git not available in this environment — nothing more to check
+    (tmp_path / "f.txt").write_text("x")
+    assert commit(tmp_path, "test commit")
+    log = run(["git", "log", "-1", "--pretty=%B"], cwd=tmp_path).full_output
+    assert "Signed-off-by:" in log
+
+
+def test_ensure_repo_applies_forge_git_identity_env_override(tmp_path, monkeypatch):
+    """A cloned repo (has its own .git already) must pick up
+    FORGE_GIT_USER_NAME/FORGE_GIT_USER_EMAIL if set — otherwise every commit
+    forge makes against a real upstream is authored under whatever
+    `git config --global user.*` happens to be on the host machine, which
+    for a real-issue PR campaign means the operator's own personal identity
+    lands permanently in a stranger's public repo history (confirmed live:
+    python-babel/babel#1334's commit author was the operator's real name +
+    personal email)."""
+    if not ensure_repo(tmp_path):
+        return  # git not available in this environment — nothing more to check
+    monkeypatch.setenv("FORGE_GIT_USER_NAME", "atomic-forge bot")
+    monkeypatch.setenv("FORGE_GIT_USER_EMAIL", "bot@example.invalid")
+    assert ensure_repo(tmp_path)  # re-entering an existing .git still applies it
+    assert run(["git", "config", "user.name"], cwd=tmp_path).full_output.strip() == "atomic-forge bot"
+    assert run(["git", "config", "user.email"], cwd=tmp_path).full_output.strip() == "bot@example.invalid"
+
+
 def test_ensure_repo_refuses_nested_project_dir(tmp_path):
     """Regression test for a real bug found live: a project_dir with no
     .git of its own, nested inside an existing repo, must NOT be

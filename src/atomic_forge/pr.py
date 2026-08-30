@@ -152,12 +152,25 @@ def ensure_fork(project_dir, upstream: str) -> tuple[str, str]:
     repo = upstream.split("/")[-1]
     fork_url = f"https://github.com/{owner}/{repo}.git"
     # Create the fork on GitHub if it doesn't already exist. `gh repo fork`
-    # is idempotent enough; a non-zero exit here usually means it already
-    # exists, which is fine — we just need the remote to point at it.
+    # is idempotent: confirmed live (astroid#3199, 2026-08-30) that an
+    # already-forked repo exits 0 with "owner/repo already exists" — the
+    # OLD comment here ("a non-zero exit usually means it already exists")
+    # was backwards and, worse, this result was never even checked: a
+    # genuine failure (e.g. a brand-new account hitting GitHub's fork-
+    # velocity abuse throttle — HTTP 403 "You cannot fork this repository
+    # at this time", confirmed account-wide by forking an unrelated repo,
+    # not upstream-specific) was silently swallowed here. The caller then
+    # pushed to a `fork` remote pointing at a fork that was never created,
+    # and got a confusing "repository not found" several steps later
+    # instead of a clear failure at the actual point of failure.
     fork_cmd = ["gh", "repo", "fork", upstream, "--clone=false"]
     if org:
         fork_cmd += ["--org", org]
-    subprocess.run(fork_cmd, cwd=str(project_dir), capture_output=True, text=True)
+    r = subprocess.run(fork_cmd, cwd=str(project_dir), capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(
+            f"gh repo fork {upstream} failed (owner={owner}): "
+            f"{(r.stderr or r.stdout).strip() or 'no output'}")
     # Point a local `fork` remote at the fork (add or fix-up).
     if _git(["remote", "get-url", "fork"], project_dir, check=False):
         _git(["remote", "set-url", "fork", fork_url], project_dir)
@@ -315,7 +328,9 @@ def forge_footer() -> str:
         "<!-- atomic-forge:pr -->\n"
         f"[![Fixed by Forge](https://img.shields.io/badge/fixed_by-atomic--forge-6f42c1?logo=github)]({_FORGE_URL})\n\n"
         f"🔨 Fixed by [Forge]({_FORGE_URL}) — an autonomous, test-driven "
-        "issue→PR repair engine (`atomic-forge fix <issue-url>`).\n"
+        "issue→PR repair engine (`atomic-forge fix <issue-url>`).\n\n"
+        f"⭐ If you found this useful, a star on [atomic-forge]({_FORGE_URL})"
+        " helps other maintainers find the tool that fixed your bug.\n"
     )
 
 

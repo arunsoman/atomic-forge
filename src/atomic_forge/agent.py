@@ -129,11 +129,20 @@ _PATCH_TOOL = {
             "or ONE fenced code block with the file's COMPLETE content (rewrite fallback, "
             "e.g. when the file doesn't exist yet). SEARCH must match the real file "
             "character-for-character — never include a line-number prefix a file-viewing "
-            "tool showed you, that's for your reference only."
+            "tool showed you, that's for your reference only.\n"
+            "`path` is OPTIONAL: omit it to patch the file you were already pointed at. "
+            "Set it only if your own investigation shows the real fix belongs in a "
+            "DIFFERENT file — SEARCH is then matched against THAT file's real content, "
+            "not the one you started from."
         ),
         "parameters": {
             "type": "object",
-            "properties": {"content": {"type": "string"}},
+            "properties": {
+                "content": {"type": "string"},
+                "path": {"type": "string", "description": (
+                    "Optional. Repo-relative path to patch, if different from the file "
+                    "you were originally pointed at.")},
+            },
             "required": ["content"],
         },
     },
@@ -342,28 +351,37 @@ def _execute_manifest_tool(tools: ToolBackend, name: str, arguments_json: str) -
         return f"ERROR: tool failed: {e}"
 
 
-def _handle_patch_call(arguments_json: str) -> tuple[str, bool, Optional[str]]:
+def _handle_patch_call(arguments_json: str) -> tuple[str, bool, Optional[str], Optional[str]]:
     """Dispatch for the `patch` synthetic tool (`_PATCH_TOOL`). Returns
-    (result_text_for_the_model, is_error, new_last_patch_or_None) —
-    mirrors the old text-grammar path's "PATCH" handling (parse.py's own
-    empty-payload guard) so behavior stays identical, just reached via a
-    real tool_call's `content` argument instead of everything after a
-    bare "PATCH" line."""
+    (result_text_for_the_model, is_error, new_last_patch_or_None,
+    new_last_patch_path_or_None) — mirrors the old text-grammar path's
+    "PATCH" handling (parse.py's own empty-payload guard) so behavior
+    stays identical, just reached via a real tool_call's `content`
+    argument instead of everything after a bare "PATCH" line.
+
+    `path`: optional, confirmed live on astroid#3257 (2026-08-30) — a
+    sample's own investigation can correctly determine the real fix
+    belongs in a file OTHER than the one it was pointed at, and previously
+    had no way to say so: the patch gate always validated against the
+    originally-assigned suspect's content, so a genuinely correct patch
+    for a different file was rejected every time as "SEARCH block not
+    found" (it was being diffed against the wrong file entirely)."""
     try:
         args = json.loads(arguments_json) if arguments_json.strip() else {}
     except json.JSONDecodeError as e:
-        return f"ERROR: malformed patch arguments ({e}).", True, None
+        return f"ERROR: malformed patch arguments ({e}).", True, None, None
     content = (args.get("content") or "").strip()
     if not content:
         return (
             "ERROR: patch content must not be empty — call patch again with either "
             "SEARCH/REPLACE block(s) or one fenced code block with the complete file.",
-            True, None,
+            True, None, None,
         )
+    path = (args.get("path") or "").strip() or None
     return (
         "Patch recorded. It will be validated when you call submit. If you are "
         "confident, submit now; otherwise keep investigating first.",
-        False, content,
+        False, content, path,
     )
 
 
@@ -476,14 +494,20 @@ def _execute_tool(tools: ToolBackend, payload: str) -> str:
 
 def run_agent(llm: ChatLLM, tools: ToolBackend, project_dir, system: str,
               task_prompt: str, traj: Trajectory,
-              submit_check: Optional[Callable[[Optional[str]], tuple[bool, str]]] = None,
+              submit_check: Optional[Callable[[Optional[str], Optional[str]], tuple[bool, str]]] = None,
               max_turns: int = 25, temperature: float = 0.0,
               tag: str = "agent", tool_manifest_text: str = "",
               tool_manifest: Optional[list] = None) -> AgentResult:
     """Drive one agentic session to completion (SUBMIT-accepted) or abort.
 
-    submit_check(last_patch) -> (accepted, feedback): called on every SUBMIT.
-    Rejection feedback is fed back and the session continues within budget.
+    submit_check(last_patch, last_patch_path) -> (accepted, feedback):
+    called on every SUBMIT. `last_patch_path` is the repo-relative path
+    the model's `patch` call named via its optional `path` argument, or
+    None if it didn't (the common case — the caller decides what "None"
+    means, usually "whatever file this session was originally pointed
+    at"). A caller that only ever targets one known file (testgen) can
+    ignore the second argument entirely. Rejection feedback is fed back
+    and the session continues within budget.
 
     tool_manifest_text: rendered once via `render_tool_manifest()` from a
     manifest discovered ONCE at run initialization (docs/forge-rebuild-
@@ -515,6 +539,11 @@ def run_agent(llm: ChatLLM, tools: ToolBackend, project_dir, system: str,
     messages = [{"role": "system", "content": system + "\n\n" + grammar},
                 {"role": "user", "content": task_prompt}]
     last_patch: Optional[str] = None
+    #: repo-relative path the LAST patch call targeted, if the model gave
+    #: one — None means "the file this session was originally pointed
+    #: at," preserving old behavior for every caller that never uses it
+    #: (testgen; any future submit_check that ignores its 2nd argument).
+    last_patch_path: Optional[str] = None
     action_counts: dict[str, int] = {}
     consecutive_errors = 0
     rejected_submits = 0
@@ -532,8 +561,33 @@ def run_agent(llm: ChatLLM, tools: ToolBackend, project_dir, system: str,
         if use_fc:
             chat_turn = llm.chat_with_tools(messages, tools=openai_tools, temperature=temperature)
             if chat_turn.tool_calls:
+                # Confirmed live on astroid#769 (2026-08-30): a name-only preview
+                # ("run_shell, run_shell, ...") made a whole class of stuck-loop
+                # aborts undiagnosable — the trajectory showed WHICH tool got
+                # stuck but never WHAT ARGUMENTS it repeated, so "same shell
+                # command re-run 5x" and "5 different shell commands" looked
+                # identical in the log.
+                #
+                # A flat [:200] cap on the whole joined string then broke the
+                # NEXT debugging session (astroid#3199, same day): a `patch`
+                # call's SEARCH/REPLACE content got truncated mid-SEARCH-block,
+                # so a repeatedly-rejected "SEARCH block not found" patch was
+                # undiagnosable from the trajectory alone — hand-testing the
+                # visible (truncated) SEARCH text against the real file showed
+                # it actually matched fine, meaning the mismatch lived entirely
+                # in the part that had been cut off. `patch` calls are the one
+                # case where the full argument IS the debugging evidence (are
+                # SEARCH and file content byte-identical or not?), so they get
+                # a much larger allowance; everything else keeps the compact
+                # per-call preview so a many-tool-call turn doesn't bloat the
+                # trajectory for tools where "which one, roughly what args" is
+                # enough.
+                def _preview_one(tc):
+                    if tc.name == "patch":
+                        return f"{tc.name}({tc.arguments})"[:4000]
+                    return f"{tc.name}({tc.arguments})"[:200]
                 traj.log(f"{tag}_turn", turn=turn, action="tool_calls",
-                         payload_preview=", ".join(tc.name for tc in chat_turn.tool_calls)[:200])
+                         payload_preview=", ".join(_preview_one(tc) for tc in chat_turn.tool_calls))
                 assistant_msg: dict[str, Any] = {"role": "assistant",
                                                  "content": chat_turn.content or None,
                                                  "tool_calls": [tc.as_message_tool_call()
@@ -551,7 +605,7 @@ def run_agent(llm: ChatLLM, tools: ToolBackend, project_dir, system: str,
                         if submit_check is None:
                             ok, feedback = True, ""
                         else:
-                            ok, feedback = submit_check(last_patch)
+                            ok, feedback = submit_check(last_patch, last_patch_path)
                         traj.log(f"{tag}_submit", turn=turn, accepted=ok, feedback=feedback[:300])
                         result = "Accepted." if ok else f"SUBMIT REJECTED.\n{feedback}\nFix and act again."
                         messages.append({"role": "tool", "tool_call_id": tc.id,
@@ -567,9 +621,10 @@ def run_agent(llm: ChatLLM, tools: ToolBackend, project_dir, system: str,
                                                f"instead of burning the rest of the turn budget", messages)
                         continue
                     if tc.name == "patch":
-                        result, is_error, new_patch = _handle_patch_call(tc.arguments)
+                        result, is_error, new_patch, new_patch_path = _handle_patch_call(tc.arguments)
                         if new_patch is not None:
                             last_patch = new_patch
+                            last_patch_path = new_patch_path
                             patched_this_turn = True
                         any_error = any_error or is_error
                     elif tc.name == "run_shell":
@@ -612,7 +667,22 @@ def run_agent(llm: ChatLLM, tools: ToolBackend, project_dir, system: str,
                                      "NOTE: still no patch call after 12 turns of investigation. Call patch "
                                      "immediately — further reading will not help once the turn budget runs out."})
                 remaining = max_turns - turn
-                if 0 < remaining <= 3:
+                # Confirmed live (testgen's F4b fix, rca_pilot_runs_1_3.md,
+                # and repeated on repair's own astroid-769 campaign run,
+                # 2026-08-30): a soft "NOTE" folded in among tool
+                # observations is not enough — a session that never once
+                # called patch can sail straight through turns_since_patch
+                # 6 and 12 on pure exploration and die at the turn cap with
+                # nothing produced. Mirror testgen's forcing fix: with 2
+                # turns left and NO patch ever recorded, issue a standalone,
+                # unambiguous directive instead of another soft nudge.
+                if remaining == 2 and last_patch is None:
+                    messages.append({"role": "user", "content":
+                                     "2 turn(s) remain and no patch has been recorded yet. Stop "
+                                     "investigating — call patch NOW with your best fix, using "
+                                     "what you've already learned. If patch is not called this "
+                                     "turn, no fix will be produced and this entire attempt fails."})
+                elif 0 < remaining <= 3:
                     messages.append({"role": "user",
                                      "content": f"NOTE: only {remaining} turn(s) left. patch and submit now."})
                 continue
@@ -620,12 +690,17 @@ def run_agent(llm: ChatLLM, tools: ToolBackend, project_dir, system: str,
         else:
             output = llm.chat(messages, temperature=temperature)
         kind, payload = parse_action(output)
-        traj.log(f"{tag}_turn", turn=turn, action=kind, payload_preview=payload[:200])
+        # Same reasoning as the function-calling path above: a `patch`
+        # payload's full text IS the debugging evidence for a rejected
+        # SEARCH/REPLACE, so it gets a much larger allowance than the
+        # compact preview every other action kind uses.
+        traj.log(f"{tag}_turn", turn=turn, action=kind,
+                 payload_preview=payload[:4000] if kind == "patch" else payload[:200])
 
         if kind == "submit":
             if submit_check is None:
                 return AgentResult(True, turn, last_patch, messages=messages)
-            ok, feedback = submit_check(last_patch)
+            ok, feedback = submit_check(last_patch, last_patch_path)
             traj.log(f"{tag}_submit", turn=turn, accepted=ok, feedback=feedback[:300])
             if ok:
                 return AgentResult(True, turn, last_patch, messages=messages)
@@ -707,7 +782,12 @@ def run_agent(llm: ChatLLM, tools: ToolBackend, project_dir, system: str,
                              "immediately — further reading will not help once the turn budget "
                              "runs out.")
         remaining = max_turns - turn
-        if 0 < remaining <= 3:
+        if remaining == 2 and last_patch is None:
+            observation += ("\nNOTE: 2 turns remain and no PATCH has been recorded yet. Stop "
+                             "investigating — emit PATCH NOW with your best fix, using what "
+                             "you've already learned. If PATCH is not emitted this turn, no fix "
+                             "will be produced and this entire attempt fails.")
+        elif 0 < remaining <= 3:
             observation += f"\nNOTE: only {remaining} turn(s) left in this session. PATCH and SUBMIT now."
 
         messages += [{"role": "assistant", "content": output},

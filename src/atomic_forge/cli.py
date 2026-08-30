@@ -66,6 +66,10 @@ def main(argv=None) -> int:
     p.add_argument("--max-rounds", type=int, default=None,
                    help="repair/fix max rounds (default: 3 for repair, 5 for fix)")
     p.add_argument("--samples", type=int, default=2, help="patch candidates per repair round")
+    p.add_argument("--max-turns-per-attempt", type=int, default=25,
+                   help="[repair/fix] turn budget per sample's agentic patch attempt "
+                        "(default: 25). Raise this alongside --max-rounds 1 --samples 1 to "
+                        "test a single long-running session instead of many short K-sampled ones.")
     p.add_argument("--architect", action="store_true",
                    help="[repair/fix] opt-in planner pass before each round's K-sampling "
                         "(one extra LLM call; not yet validated to improve fix-rate — see "
@@ -240,7 +244,23 @@ def main(argv=None) -> int:
         project_dir = (Path(args.project_dir) if args.project_dir and args.project_dir != "./forge_out"
                        else None)
         issue_body_file = Path(args.issue_body_file) if args.issue_body_file else None
-        repro = Path(args.repro) if args.repro else None
+        # .resolve() to an absolute path: confirmed live (astroid #3259/
+        # #3258/#3257, 2026-08-30, three separate runs) that a relative
+        # --repro path silently broke the F1 second-witness check —
+        # run_repro_probe launches the probe as a SUBPROCESS with
+        # cwd=project_dir (the CLONED TARGET repo), not atomic-forge's own
+        # directory, so a relative path resolved against the wrong base
+        # and the probe failed with "can't open file ... No such file or
+        # directory" (exit 2). ANY non-zero exit is read as "bug still
+        # present" (the documented, correct contract for a probe that
+        # genuinely ran and found the bug) — so a merely-unfound file
+        # silently looked identical to a real fix failure, blocking every
+        # PR tonight even when the actual patch was independently
+        # confirmed correct. The pre-flight check happened to still "pass"
+        # by coincidence (file-not-found also reads as "bug present," which
+        # matches the expected pre-fix state) — only the POST-repair
+        # re-check was actually wrong every time.
+        repro = Path(args.repro).resolve() if args.repro else None
         test_file = Path(args.test_file) if args.test_file else None
         r = run_fix(args.url, llm, project_dir=project_dir, install_cmd=args.install_cmd,
                     max_rounds=args.max_rounds or 5, max_turns=args.max_turns,
@@ -248,7 +268,8 @@ def main(argv=None) -> int:
                     pr_title=args.pr_title, issue_body_file=issue_body_file, samples=args.samples,
                     work_root=(Path(args.work_root) if args.work_root else None),
                     architect_mode=args.architect, skip_bootstrap=args.skip_bootstrap,
-                    bootstrap_timeout=args.bootstrap_timeout, repro=repro, test_file=test_file)
+                    bootstrap_timeout=args.bootstrap_timeout, repro=repro, test_file=test_file,
+                    max_turns_per_attempt=args.max_turns_per_attempt)
         print(f"[forge] pr-url={r.get('pr_url') or ''}")
         return 0 if r.get("success") else 1
 

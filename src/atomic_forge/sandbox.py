@@ -222,6 +222,30 @@ def _is_own_repo(project_dir: str | Path) -> bool:
     return toplevel is not None and toplevel == project_dir
 
 
+def _apply_forge_identity(project_dir: str | Path) -> None:
+    """Set a LOCAL (not --global) git identity for this checkout, if
+    FORGE_GIT_USER_NAME/FORGE_GIT_USER_EMAIL are set in the environment.
+
+    Without this, a checkout that already has its own `.git` (the normal
+    case for `atomic-forge fix <issue-url>`, which clones a real upstream)
+    falls through to whatever `git config --global user.*` happens to be
+    on the machine running forge — for a real-issue PR campaign that means
+    every commit forge raises against a stranger's repo is authored under
+    the operator's own personal name/email, permanently, in that repo's
+    public history (confirmed live: python-babel/babel#1334's commit
+    author is the maintainer's real name + personal email). Campaign
+    drivers should set both env vars to a dedicated, non-personal identity
+    (e.g. the PR-raising bot account's GitHub noreply address) before
+    calling `atomic-forge fix`; interactive/local use that wants commits
+    under the developer's own name should leave them unset."""
+    name = os.environ.get("FORGE_GIT_USER_NAME", "").strip()
+    email = os.environ.get("FORGE_GIT_USER_EMAIL", "").strip()
+    if not (name and email):
+        return
+    run(["git", "config", "user.name", name], cwd=project_dir)
+    run(["git", "config", "user.email", email], cwd=project_dir)
+
+
 def ensure_repo(project_dir: str | Path) -> bool:
     """git-init the project dir if needed. Returns True when a repo
     ISOLATED to project_dir is usable — never inits into (or otherwise
@@ -230,6 +254,7 @@ def ensure_repo(project_dir: str | Path) -> bool:
     if not git_available():
         return False
     if (project_dir / ".git").exists():
+        _apply_forge_identity(project_dir)
         return True
     enclosing = _repo_toplevel(project_dir)
     if enclosing is not None and enclosing != project_dir.resolve():
@@ -251,6 +276,7 @@ def ensure_repo(project_dir: str | Path) -> bool:
               cwd=project_dir)
     if not cfg.ok:
         return False
+    _apply_forge_identity(project_dir)  # override the placeholder if a real one was requested
     run(["git", "add", "-A"], cwd=project_dir)
     run(["git", "commit", "-q", "-m", "forge: init"], cwd=project_dir)
     return True
@@ -272,7 +298,12 @@ def commit(project_dir: str | Path, message: str) -> bool:
               f"touch that repo instead.", file=sys.stderr)
         return False
     add = run(["git", "add", "-A"], cwd=project_dir)
-    ci = run(["git", "commit", "-q", "--allow-empty", "-m", message], cwd=project_dir)
+    # --signoff: always attach a DCO `Signed-off-by:` trailer (using whatever
+    # identity is configured — see _apply_forge_identity). Harmless on repos
+    # that don't require DCO; required for ones that do (pandas, xarray,
+    # scikit-learn among the campaign's own targets) — a PR missing it fails
+    # that repo's DCO check on arrival regardless of the fix's correctness.
+    ci = run(["git", "commit", "-q", "--allow-empty", "--signoff", "-m", message], cwd=project_dir)
     if not (add.ok and ci.ok):
         print(f"[forge] WARNING: git commit failed ({message}): {ci.output[:200]}", file=sys.stderr)
         return False

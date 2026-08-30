@@ -184,7 +184,11 @@ def generate_file_agentic(project_dir, task: AtomicTask, llm: ChatLLM,
 
     holder: dict = {}
 
-    def check(patch: str | None) -> tuple[bool, str]:
+    def check(patch: str | None, _path: str | None = None) -> tuple[bool, str]:
+        # `_path`: testgen always targets the one known generated-test
+        # file — the `patch` tool's optional multi-file `path` argument
+        # (added for repair's own check(), see repair_agent.py) has no
+        # meaning here and is intentionally ignored.
         if not patch:
             return False, "SUBMIT without PATCH. Output PATCH with the complete file in one fenced block, or SEARCH/REPLACE hunks if modifying an existing file."
         if _looks_like_search_replace(patch):

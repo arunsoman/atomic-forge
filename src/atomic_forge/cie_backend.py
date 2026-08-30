@@ -26,7 +26,7 @@ import sys
 import threading
 from pathlib import Path
 
-from .tools import _envelope
+from .tools import LocalToolBackend, _envelope
 
 VIEW_WINDOW = 100
 
@@ -97,6 +97,34 @@ class MCPBridge:
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.session = None
         self._ready = threading.Event()
+        #: `parallel_samples=True` (repair_agent.py's default) runs K
+        #: repair samples concurrently in a ThreadPoolExecutor, and each
+        #: calls tools on this SAME bridge from its own thread.
+        #: `run_coroutine_threadsafe` only guarantees the coroutine gets
+        #: scheduled onto `self.loop`; the event loop itself can still have
+        #: more than one `call_tool` in flight at once (request A sent and
+        #: awaiting its response when request B is scheduled), so the CIE
+        #: server subprocess can receive genuinely concurrent tool calls.
+        #: CIE's graph.db is a plain rollback-journal SQLite file (no WAL),
+        #: which allows exactly one writer and blocks readers against it —
+        #: confirmed live on astroid#769 (2026-08-30): 10x "OperationalError:
+        #: database is locked" in one repair session, each one silently
+        #: swapping a real graph query for CIE's own lower-quality
+        #: "heuristic index" fallback instead of erroring. A model calling
+        #: the same tool twice and getting a different-quality answer each
+        #: time is a very plausible driver of the "stuck: identical action
+        #: repeated 5 times" abort this project's own trajectories showed
+        #: dominating that entire run. `GraphToolBackend`/`CodeGraph`
+        #: already serialize their own SQLite connection behind a lock for
+        #: exactly this reason (see codegraph.py, and parallel_samples'
+        #: docstring in repair_agent.py) — this bridge never got the same
+        #: treatment. Serializing whole round-trips here (request fully
+        #: completes before the next one is even sent) removes any
+        #: concurrent server-side access forge itself could cause. CIE
+        #: tool calls are fast (graph lookups, not LLM calls), so this
+        #: costs little — the expensive concurrent work (LLM turns) is
+        #: untouched.
+        self._call_lock = threading.Lock()
         self.thread.start()
         if not self._ready.wait(ready_timeout):
             raise RuntimeError("CIE MCP bridge did not initialize in time")
@@ -112,14 +140,18 @@ class MCPBridge:
         self.loop.run_forever()
 
     def call(self, tool_name, **kwargs):
-        fut = asyncio.run_coroutine_threadsafe(self.session.call_tool(tool_name, kwargs), self.loop)
-        res = fut.result(timeout=120)
+        # Serialized: see the `_call_lock` note in __init__ — one full
+        # request/response round-trip to the CIE server at a time, across
+        # every thread sharing this bridge.
+        with self._call_lock:
+            fut = asyncio.run_coroutine_threadsafe(self.session.call_tool(tool_name, kwargs), self.loop)
+            res = fut.result(timeout=120)
         blocks = res.content if hasattr(res, "content") else res
         text = "\n".join(getattr(b, "text", None) or str(b) for b in blocks)
         try:
             return json.loads(text)
         except Exception:
-            return {"ok": False, "tool": name, "results": [], "hint": text[:600]}
+            return {"ok": False, "tool": tool_name, "results": [], "hint": text[:600]}
 
     def stop(self):
         try:
@@ -139,6 +171,10 @@ class MCPToolBackend:
     def __init__(self, bridge: MCPBridge, project_dir: Path):
         self.bridge = bridge
         self.project_dir = Path(project_dir)
+        #: lazy: LocalToolBackend.__init__ eagerly scans the whole tree to
+        #: build its SymbolIndex, so only pay for it if statement_graph is
+        #: actually called (see statement_graph() below).
+        self._local: LocalToolBackend | None = None
 
     def _rel(self, env):
         results = env.get("results")
@@ -184,8 +220,59 @@ class MCPToolBackend:
     def affected_by(self, file_path, max_depth=3, direction="incoming"):
         return self._c("affected_by", file_path=file_path, max_depth=max_depth, direction=direction)
 
+    def entity_context(self, symbol):
+        """One compact, pre-assembled neighborhood block for `symbol` —
+        node info, callers, callees, tests, and class hierarchy when
+        applicable — cheaper than chaining callers()+callees()+search_symbol()
+        as three separate turns for the common "give me everything relevant
+        to this one symbol" investigation step."""
+        return self._c("entity_context", symbol=symbol)
+
+    def class_hierarchy(self, class_name):
+        """Ancestors/interfaces/descendants of a class, resolved from
+        extends/implements edges — confirmed live against astroid#769
+        (2026-08-30) to return real, useful inheritance chains (e.g.
+        ClassDef's ancestors/descendants), unlike `actual_callers` (needs
+        runtime OTel telemetry a cold clone never has — always empty) and
+        `contracts` (errors: `ModuleNotFoundError: No module named 'core'`
+        in this installed CIE version) — deliberately not wrapped here."""
+        return self._c("class_hierarchy", class_name=class_name)
+
     def failing_context(self, test):
         return self._c("failing_context", test_identifier=test)
+
+    def hybrid_search(self, query, top_k=10):
+        """Lexical + dense-embedding + graph-degree ranked search — CIE's
+        `ToolService.hybrid_search` (RQ-01). Unlike every other read here,
+        this isn't call-graph-distance-from-the-failing-test; it finds
+        files by relevance to the failure's own vocabulary (assertion
+        text, exception type), which reaches code a static call graph
+        never touches — e.g. astroid's `# type:` comment handling in
+        `rebuilder.py`, invisible to `callers`/`search_symbol` because
+        nothing in the failing test's call chain statically references it.
+        Confirmed live against the astroid-769 campaign graph
+        (2026-08-30): this was the only tool that surfaced the real fix
+        file across two full repair rounds. Degrades gracefully with
+        `dense_score: 0.0` on every hit when embeddings weren't computed
+        for the index (e.g. no NVIDIA_API_KEY at `cie index` time) — still
+        useful via its lexical+graph legs, never an error."""
+        return self._c("hybrid_search", query=query, top_k=top_k)
+
+    def statement_graph(self, file, line=None, radius=5):
+        """Statement-level def-use context around `line` in `file` — CIE
+        has no equivalent tool, so this delegates straight to forge's own
+        `LocalToolBackend.statement_graph` against the on-disk checkout
+        (lazily built on first call; a fresh SymbolIndex scan, not a CIE
+        graph query). Without this method, `REPAIR_SYSTEM`'s own prompt
+        ("DEEP LOCALIZATION IN LONG FUNCTIONS: ... TOOL statement_graph(...)")
+        was a dead instruction on every CIE-backed run (`forge fix`'s only
+        path — CIE is mandatory there, per fix.py): describe()'s manifest
+        introspection silently omitted it since MCPToolBackend never
+        defined it, so the model could never actually call the tool its
+        own system prompt told it to use for exactly this situation."""
+        if self._local is None:
+            self._local = LocalToolBackend(self.project_dir)
+        return self._local.statement_graph(file, line=line, radius=radius)
 
     # -- writes (CIE syncs the graph in-call) --
     def write_file(self, path, content):

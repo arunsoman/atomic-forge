@@ -35,8 +35,10 @@ from .llm import ChatLLM
 from .models import AtomicTask
 from .repair import failure_count_for as _failure_count_for
 from .sandbox import ProgressCallback, TestStack, commit, detect_test_stack, lint_gate, run_test, truncate
+from .spectrum import SpectrumHit, spectrum_localize
 from .stacks import is_test_file as _is_test_file
 from .symbols import SymbolIndex
+from .symbols import _SKIP_DIRS as _VENDOR_DIRS
 from .tools import ToolBackend
 from .trajectory import Trajectory
 
@@ -46,14 +48,174 @@ from .trajectory import Trajectory
 #: handling, which detects the actual stack instead.
 DEFAULT_TEST_CMD = "python -m pytest -q --continue-on-collection-errors"
 
-REPAIR_SYSTEM = """You are an autonomous repair agent. A test suite is failing. Your job: find the root cause and produce the MINIMAL correct fix.
-Workflow that works:
-1. Start from the failure: TOOL failing_context on the failing test, and read the suspect files with TOOL file_skeleton then TOOL view_file.
-2. Form ONE root-cause hypothesis from the failing assertion/traceback — not from guessing.
-3. PATCH with the minimal SEARCH/REPLACE fix (unique match). Never edit tests to make them pass.
-4. RUN the failing test to verify your reasoning about behavior, then SUBMIT.
-You have a limited turn budget — spend it reading code, not repeating actions.
-Never weaken or edit the tests to make them pass. Fix the source, not the check.
+REPAIR_SYSTEM = """# ATOMIC FORGE — REACT PATCH LOOP
+## Repair Agent System Prompt
+
+You are the repair agent operating inside the Atomic Forge ReAct patch loop.
+Your job: given an ALREADY-LOCALIZED failing test and prime suspect, produce
+the smallest, semantically correct source change that makes the test pass
+while preserving all other repository behavior.
+
+Critical: localization is DONE (traceback paths, symbol matches,
+hybrid_search, execution-grounded Ochiai spectrum already ran in Python
+and picked the suspect below). Do not re-run repo-wide search or
+rediscover it — your turn budget is for investigating THIS suspect.
+
+## 1. OBJECTIVE: RESTORE CORRECT BEHAVIOR, NOT GREEN CI
+
+Goal: restore the behavior the test and repository semantics actually
+require. Not the goal: "make the assertion pass" by any means.
+Never modify, weaken, or skip the failing test. Never add test-specific
+branches, hard-code the expected value, or mock the subject under test to
+satisfy the assertion. Never change a public API solely to fit the test.
+Never perform unrelated refactoring.
+
+## 2. INVESTIGATION PROTOCOL — ANSWER BEFORE PATCHING
+
+Answer these with minimal, surgical retrieval — prefer `file_skeleton`
+(structure only) before `view_file` (a real window of lines); an 800-line
+dump is worse than a precise 20-line window:
+
+1. What does the failing test expect? -> `failing_context`, `entity_context`
+2. What does the implementation currently do? -> `view_file` on the
+   suspect at the localized line range
+3. Where does behavior diverge from semantics? -> compare the test's
+   contract against the actual logic; trace with `statement_graph` or
+   `callers`/`callees` if the divergence spans more than one function
+4. What dependency/caller causes or amplifies the bug? -> `path_between`
+   or `callers`, only if the suspect is a symptom, not the root
+
+Token discipline: if you can't explain the bug in 3 sentences, you
+haven't read enough yet. If you've pulled more than ~200 lines of source,
+you're reading too much — narrow the window instead.
+
+## 3. TOOL USAGE
+
+| Tool | What it does | When to use |
+|---|---|---|
+| `failing_context` | traceback, assertion, failing test identity | First. Always start here. |
+| `file_skeleton` | signatures + line ranges, no bodies | Second. Understand structure before reading bodies. |
+| `view_file` | a bounded window of real source lines | Third. Pull 15-30 lines around the suspect location only. |
+| `search_symbol` | locate a definition by name | When you need to find where something is defined. |
+| `entity_context` | one pre-assembled neighborhood (node, callers, callees, tests, hierarchy) | Cheaper than chaining callers+callees+search_symbol as separate turns. |
+| `class_hierarchy` | ancestors/descendants of a class | Whenever the bug could be an inherited/overridden method. |
+| `statement_graph` | statement-level def-use chains inside a function | Suspect function is long (roughly >100 lines); isolate the exact statement cluster instead of reading the whole body. |
+| `callers` / `callees` | upstream/downstream call relationships | Bug is likely in a caller or a downstream dependency of the suspect. |
+| `path_between` | route between two symbols | Test and suspect are in different modules and the link is unclear. |
+| `resolve_import` | exact import statement for a symbol | Immediately on any ImportError or missing symbol — never guess a path. |
+| `hybrid_search` | lexical+dense+graph search by the failure's vocabulary | Graph traversal from the test doesn't reach the suspect. A lexical match alone is not proof of causality — be skeptical, especially of hits outside the project's own source tree. |
+| `run_shell` | execute a shell command (tests included) | After every patch attempt, and any time you need to verify a hypothesis rather than assume it. Already runs in the project root — never `cd` into a guessed path first; use plain relative paths (e.g. `python -m pytest tests/test_x.py`). |
+
+`run_shell` QUOTING: confirmed live on astroid#769 (2026-08-30) that a
+`python -c "..."` one-liner embedding a multi-line script with its own
+quotes (e.g. an inner f-string or triple-quoted string) reliably breaks —
+the inner quote character terminates the outer shell string early,
+producing a syntax error every time. Two full samples on that run each
+re-ran the exact same broken one-liner 5+ times and aborted stuck without
+ever reaching a patch, having burned their entire budget on a shell
+quoting bug rather than the actual fix. If you need to run more than one
+or two lines of Python to test a hypothesis, write it to a scratch file
+first (e.g. `write_file` a `/tmp/probe.py`, then `run_shell python
+/tmp/probe.py`) instead of inlining it into `-c`. More generally: if a
+`run_shell` command errors, do not re-run it verbatim hoping for a
+different result — read the actual error and change the command, or
+change approach entirely.
+
+Not available / do not use: `actual_callers` (needs runtime OTel telemetry
+a cold clone never has — always empty), `contracts` / `semantic_diff` /
+`check_invariant` / `state_machine` (need hand-authored specs this repo
+was never fed), CIE's own `run_tests` tool (a different, coarser thing —
+runs a whole unit/integration "layer", not one file; use `run_shell` to
+run the exact failing test — it already does this correctly).
+
+## 4. ROOT-CAUSE DOCUMENTATION — REQUIRED BEFORE YOU PATCH
+
+You may not emit a patch until you can state:
+  Expected: what correct behavior should look like
+  Actual: what the buggy code currently does
+  Root cause: the precise mechanism of divergence (off-by-one? missing
+    guard? wrong operator? state mutation? wrong dispatch?)
+  Fix strategy: one sentence — the change, and why it's minimal
+If you can't fill in all four, stop and investigate further — don't patch
+on a speculative guess.
+
+## 5. PATCH FORMAT — STRICT SEARCH/REPLACE, DO NOT DEVIATE
+
+The patch gate parses hunks using EXACTLY this syntax:
+
+    <<<<<<< SEARCH
+    <exact original lines, character-for-character, including indentation>
+    =======
+    <replacement lines, character-for-character, including indentation>
+    >>>>>>> REPLACE
+
+- Do NOT emit a unified diff (`--- a/... +++ b/... @@`).
+- Do NOT return the whole modified file (the one exception: a target file
+  that doesn't exist yet at all gets ONE fenced code block with the
+  complete new content — there's nothing on disk to SEARCH against).
+- SEARCH must match the current file verbatim (tabs, spaces, trailing
+  whitespace) and uniquely — re-read the file if unsure, don't approximate.
+- Changing non-contiguous lines: emit multiple SEARCH/REPLACE blocks in
+  one patch rather than one block spanning the untouched lines between
+  them — they're applied independently and safely regardless of order.
+- Deleting code: leave the REPLACE side empty (rare — prefer the smallest
+  change that doesn't require a deletion at all).
+- A new import needed: get the exact statement from `resolve_import`,
+  then add it via its own separate SEARCH/REPLACE block at the top of
+  the file — don't fold it into the same hunk as the logic change.
+- Only touch files the root cause genuinely requires — an unavoidable
+  import in a second file is fine, unrelated cleanup is not.
+- Wrong assigned file: you were pointed at a prime suspect, but your own
+  investigation is the authority — if it shows the real fix belongs in a
+  DIFFERENT file, call `patch` with that file's repo-relative path as the
+  optional `path` argument. SEARCH is then matched against THAT file's
+  real content, not the one you started from. Never guess a `path` you
+  haven't actually viewed — read it first (`view_file`/`file_skeleton`).
+
+## 6. VERIFICATION — RUN, DON'T ASSUME
+
+After proposing a patch, use `run_shell` to execute the failing test
+yourself (and the relevant module's other tests, if the blast radius
+looks non-trivial) before SUBMIT — don't guess blind. But submitting is
+not succeeding: the surrounding Python repair loop independently
+re-applies and re-tests every candidate and does not trust your
+self-report. Your patch must survive that second, independent execution.
+
+If a run still fails, do not resubmit the same patch with tweaks —
+re-examine your root-cause analysis: classify what happened (wrong
+diagnosis vs. incomplete fix vs. a new failure exposed vs. environmental)
+using the new evidence, re-read only what that evidence implicates, then
+patch again. Never repeat an identical action.
+
+## 7. TEST = EVIDENCE, IMPLEMENTATION = VARIABLE
+
+The test is immutable evidence of a contract; the implementation is the
+only thing that may change. Treat every assertion as a specification, not
+a target to game. Only touch the test if repository evidence conclusively
+shows the test itself is wrong, and even then, do so visibly, never
+silently.
+
+## 8. ANTI-PATTERNS — AUTOMATIC REJECTION
+
+| Anti-pattern | Why it fails |
+|---|---|
+| Changing the test assertion to match buggy output | Violates the immutability contract. |
+| Adding test-only branches or `if TESTING:` guards | Pollutes production code; detects test execution instead of fixing behavior. |
+| Hard-coding the expected value from the test | Fixes the symptom, not the bug. |
+| Whole-file reformatting | Obscures the actual fix and breaks blame. |
+| Hallucinating imports or utility functions | Introduces NameError or a hidden, nonexistent dependency. |
+| Guessing an import path instead of using `resolve_import` | Fails the independent re-verification step. |
+
+## 9. NO HALLUCINATION
+
+Never invent a function, import, class, API, or file's contents. If you
+need information you don't have, retrieve it with the tools above; if a
+tool can't provide it, say what's missing rather than guessing.
+
+REMINDER: you are not a code generator. You are a surgical repair agent.
+Investigate minimally. Reason explicitly. Patch precisely. Verify always.
+
+---
 
 IMPORT ERRORS (`ModuleNotFoundError`, `ImportError: cannot import name 'X'
 from 'Y'`, a TS/JS "Cannot find module"): never guess the corrected import
@@ -193,11 +355,45 @@ def _resolve_traceback_path(project_dir: Path, path: str) -> Optional[str]:
     return None
 
 
+def _semantic_query(signals: FailureSignals, output: str) -> str:
+    """A short natural-language query for `hybrid_search`, built entirely
+    from what's already extracted/observed — no extra LLM call. Pure
+    call-graph-distance signals (failing_context/search_symbol/callers)
+    only find files reachable by a STATIC call edge from the failing
+    test; a bug reached through dynamic dispatch (decorator/registry-based
+    handlers, astroid's `inference_tip()` pattern and similar) has no such
+    edge and never surfaces no matter how many rounds run. The failure's
+    own vocabulary — exception type + the assertion/error text pytest
+    prints — is what actually names the concept involved, which is what
+    hybrid_search's lexical+dense+graph ranking searches on instead of
+    graph proximity."""
+    tail = [l.strip() for l in output.strip().splitlines()[-6:]
+            if l.strip() and not l.strip().startswith(("File ", "at "))]
+    query = " ".join(list(signals.exception_types) + tail)[:300]
+    if query:
+        return query
+    return signals.test_nodes[0] if signals.test_nodes else (signals.test_files[0] if signals.test_files else "")
+
+
 def localize(signals: FailureSignals, tools: ToolBackend, traj: Trajectory,
-             project_dir: Path, known_files: Optional[list[str]] = None) -> list[Suspect]:
+             project_dir: Path, known_files: Optional[list[str]] = None,
+             output: str = "", spectrum: Optional[dict[str, "SpectrumHit"]] = None) -> list[Suspect]:
     """known_files: the current round's own file set — investigated first
     when a crash's raw output happens to name unrelated files, and used as
-    a last-resort suspect when every other signal comes up empty."""
+    a last-resort suspect when every other signal comes up empty.
+
+    output: the failing test run's raw output (`RunResult.full_output`),
+    used only to build a `hybrid_search` query (see `_semantic_query`).
+    Optional and additive — every existing signal source above is
+    unaffected when omitted.
+
+    spectrum: Ochiai suspiciousness per file from `spectrum.spectrum_localize`
+    (computed once per repair session, not per round — see the call site
+    in `repair_loop_agentic`). The only signal here grounded in what
+    actually EXECUTED for this failure rather than what looks structurally
+    or lexically related; scaled to compete with the stacked static-graph
+    bumps above (a file the failing test uniquely touches, ep=0, scores
+    the full 10.0). Optional and additive, same as every other signal."""
     suspects: dict[str, Suspect] = {}
     known_files = known_files or []
     known_set = set(known_files)
@@ -209,6 +405,13 @@ def localize(signals: FailureSignals, tools: ToolBackend, traj: Trajectory,
             except ValueError:
                 pass
         if _is_test_file(file):
+            return
+        # Confirmed live on astroid#769 (2026-08-30): hybrid_search's
+        # lexical leg matched a vendored `.venv/.../_pytest/terminal.py`
+        # on pytest's own "short test summary" wording and made it the
+        # ONLY suspect for two full rounds — every sample burned its turn
+        # budget patching a dependency instead of project source.
+        if set(Path(file).parts) & _VENDOR_DIRS:
             return
         if not allow_missing and not (project_dir / file).exists():
             return
@@ -227,20 +430,62 @@ def localize(signals: FailureSignals, tools: ToolBackend, traj: Trajectory,
             bump(resolved, 5.0, f"required by {requiring_rel} but does not exist on disk",
                  allow_missing=True)
 
+    # Structural signals (failing_context/search_symbol/callers) — best-
+    # effort like hybrid_search below, NOT previously guarded: confirmed
+    # live (astroid#3258, 2026-08-30, three `fix` runs launched in
+    # parallel) that a slow/contended CIE backend timing out inside
+    # `tools.callers()` propagated as an unhandled TimeoutError and killed
+    # the entire repair loop outright — losing a structural signal should
+    # degrade localization, not crash the whole run.
     test_candidates = signals.test_nodes or signals.test_files
     ordered_tests = sorted(test_candidates, key=lambda f: f not in known_set)[:3]
     for test in ordered_tests:
-        ctx = tools.failing_context(test)
+        try:
+            ctx = tools.failing_context(test)
+        except Exception:  # noqa: BLE001 — structural signal, optional, never fatal
+            continue
         for r in ctx.get("results", []):
             pts = 4.0 if r["distance"] == 1 else 2.0
             bump(r["file"], pts, f"distance-{r['distance']} from failing test ({r['symbol']})")
 
     for name in signals.symbol_names[:5]:
-        hits = tools.search_symbol(name)
+        try:
+            hits = tools.search_symbol(name)
+        except Exception:  # noqa: BLE001 — structural signal, optional, never fatal
+            continue
         for h in hits.get("results", [])[:2]:
             bump(h["source_file"], 3.0, f"defines symbol '{name}' from error message")
-        for c in tools.callers(name).get("results", [])[:3]:
+        try:
+            callers = tools.callers(name).get("results", [])
+        except Exception:  # noqa: BLE001 — structural signal, optional, never fatal
+            callers = []
+        for c in callers[:3]:
             bump(c["caller_file"], 1.5, f"calls '{name}' (possible import/usage site)")
+
+    # Semantic signal — optional (only CIE-backed tool backends implement
+    # this) and best-effort: an embeddings/index outage must never break
+    # localization, it just loses this one extra signal.
+    if hasattr(tools, "hybrid_search"):
+        try:
+            query = _semantic_query(signals, output)
+            if query:
+                hits = tools.hybrid_search(query, top_k=8)
+                for h in hits.get("results", [])[:6]:
+                    src = h.get("source_file")
+                    if src:
+                        bump(src, 3.5, f"semantically relevant to failure ({h.get('name', '?')})")
+        except Exception:  # noqa: BLE001 — semantic search is optional, never fatal
+            pass
+
+    # Causal signal — grounded in actual test execution, not structure or
+    # lexical similarity. See spectrum.py's module docstring. Line-level,
+    # not file-level (confirmed live on astroid#769: file-level tied ALL
+    # ~90 candidate files at the identical score — see spectrum.py) — the
+    # specific line + raw ep count are surfaced so the agent can jump
+    # straight to it instead of re-deriving what's already known.
+    for f, hit in (spectrum or {}).items():
+        bump(f, hit.score * 10.0,
+             f"spectrum: line {hit.line} uniquely suspicious (Ochiai={hit.score:.2f}, ep={hit.ep})")
 
     ranked = sorted(suspects.values(), key=lambda s: -s.score)
 
@@ -252,6 +497,20 @@ def localize(signals: FailureSignals, tools: ToolBackend, traj: Trajectory,
     traj.log("localize", signals=signals.summary(),
              suspects=[{"file": s.file, "score": s.score, "why": s.evidence[:2]} for s in ranked])
     return ranked
+
+
+def _format_exhaustion_note(exhausted_files: dict[str, str]) -> str:
+    """One task_prompt paragraph summarizing files earlier rounds already
+    burned their full sample budget on, reusing data already collected in
+    `exhausted_files` — no extra LLM call, no message-scraping. Empty
+    string when nothing has been exhausted yet."""
+    if not exhausted_files:
+        return ""
+    tried_list = "; ".join(f"{f} ({why})" for f, why in exhausted_files.items())
+    return (f"\n\nPrior round(s) already exhausted their turn budget on: {tried_list}. "
+            "Do not re-investigate those files unless this suspect list gives you no "
+            "better option — the earlier attempt(s) already read them closely and could "
+            "not find or land a fix there.")
 
 
 # --------------------------------------------------------------------------
@@ -327,6 +586,16 @@ class Candidate:
     diff_size: int
     failures: Optional[int] = None
     turns: int = 0
+    #: this candidate's own pre-patch content/existence, captured at
+    #: evaluation time. Confirmed live on astroid#3257 (2026-08-30): the
+    #: round loop used to assume every candidate targeted the SAME file
+    #: (the round's assigned `top.file`) and shared one `target`/`original`
+    #: for apply/test/revert — but a sample's own investigation can
+    #: correctly determine the real fix belongs in a DIFFERENT file (see
+    #: the `patch` tool's optional `path` argument), so each candidate
+    #: needs its own original/existed_before to revert correctly.
+    original: str = ""
+    existed_before: bool = False
 
 
 _PLAN_MARKER = "state your fix plan"
@@ -385,22 +654,48 @@ def _attempt_patch(file_rel: str, task_prompt: str, llm: ChatLLM, tools: ToolBac
     current = target.read_text(errors="replace") if target.exists() else ""
     holder: dict = {}
 
-    def check(patch: Optional[str]) -> tuple[bool, str]:
+    def check(patch: Optional[str], path: Optional[str] = None) -> tuple[bool, str]:
+        # `path`: confirmed live on astroid#3257 (2026-08-30) — a sample's
+        # own investigation can correctly determine the real fix belongs
+        # in a file OTHER than `file_rel` (the round's assigned suspect),
+        # and previously had no way to say so: every patch was diffed
+        # against `current` (file_rel's content) regardless, so a
+        # genuinely correct patch for a different file was rejected every
+        # time as "SEARCH block not found" — it was being matched against
+        # the wrong file entirely. None (the common case) means "the
+        # file this sample was pointed at," preserving old behavior.
         if not patch:
             return False, "You SUBMITted without a PATCH. Produce PATCH first."
-        new, err = _apply_patch(current, patch)
+        target_rel = (path or file_rel).strip().lstrip("/")
+        target_path = (project_dir / target_rel).resolve()
+        try:
+            target_path.relative_to(project_dir.resolve())
+        except ValueError:
+            return False, f"'{path}' is outside the project — patch a file inside the repo."
+        if _is_test_file(target_rel):
+            return False, (
+                f"'{path}' is a test file — never patch the test to make it pass. "
+                "Fix the implementation the test is checking, in a different file."
+            )
+        if target_rel == file_rel:
+            target_content = current  # avoid a redundant re-read for the common case
+        else:
+            target_content = target_path.read_text(errors="replace") if target_path.exists() else ""
+        new, err = _apply_patch(target_content, patch)
         if new is None:
-            if not target.exists():
+            if not target_path.exists():
                 return False, (
-                    f"{file_rel} does not exist yet — there is nothing for SEARCH/REPLACE "
+                    f"{target_rel} does not exist yet — there is nothing for SEARCH/REPLACE "
                     "to match. Submit a PATCH containing ONE fenced code block with the "
                     "file's COMPLETE content instead."
                 )
             return False, f"Patch does not apply: {err}. Re-read the file (view_file) and match SEARCH exactly."
-        ok, why = lint_gate(project_dir, file_rel, new)
+        ok, why = lint_gate(project_dir, target_rel, new)
         if not ok:
             return False, f"Patch fails syntax gate: {why}. Fix and PATCH again."
         holder["new"] = new
+        holder["path"] = target_rel
+        holder["original"] = target_content
         return True, ""
 
     result = run_agent(llm, tools, project_dir, REPAIR_SYSTEM, task_prompt, traj,
@@ -412,7 +707,9 @@ def _attempt_patch(file_rel: str, task_prompt: str, llm: ChatLLM, tools: ToolBac
                  reason=result.abort_reason)
         return None
     new = holder["new"]
-    return Candidate(file=file_rel, new_content=new, diff_size=_diff_size(current, new), turns=result.turns)
+    actual_file = holder.get("path", file_rel)
+    original = holder.get("original", current)
+    return Candidate(file=actual_file, new_content=new, diff_size=_diff_size(original, new), turns=result.turns)
 
 
 def repair_loop_agentic(project_dir, llm: ChatLLM, tools: ToolBackend, traj: Trajectory,
@@ -531,12 +828,38 @@ def repair_loop_agentic(project_dir, llm: ChatLLM, tools: ToolBackend, traj: Tra
         _mark_batch_tested_green(sorted((tasks_by_file or {}).keys()))
         return {"success": True, "rounds": 0, "initial_failures": 0, "final_failures": 0}
 
+    # Ochiai spectrum, computed ONCE for the whole session (not per round):
+    # the causal relationship between files and the ORIGINAL failing test
+    # doesn't change round to round, and each computation costs ~1 + N
+    # extra test subprocess runs — see spectrum.py. Best-effort: any
+    # failure (non-pytest stack, no pytest-cov, nothing to sample) just
+    # yields {}, and localize() treats an empty spectrum as no signal.
+    initial_signals = extract_signals(res.full_output)
+    failing_test_id = (initial_signals.test_nodes[0] if initial_signals.test_nodes
+                       else initial_signals.test_files[0] if initial_signals.test_files else None)
+    spectrum_scores: dict[str, SpectrumHit] = {}
+    if failing_test_id:
+        try:
+            spectrum_scores = spectrum_localize(project_dir, test_cmd, image, failing_test_id)
+        except Exception:  # noqa: BLE001 — spectrum is optional, never fatal
+            spectrum_scores = {}
+
     best_failures = initial
     repaired: list[str] = []
     suspects: list[Suspect] = []
     #: Set when a round's winner is rejected by the blast-radius gate —
     #: fed into the NEXT round's task_prompt as an explicit constraint.
     pending_violations: list[str] = []
+    #: file -> short reason a full round's sample budget was already spent
+    #: on it with nothing usable to show. localize() is a pure function of
+    #: the (unchanged, since no patch has landed) failing-test signals, so
+    #: without this a round whose samples all fail on the top suspect just
+    #: hands the NEXT round the identical ranked list and repeats the same
+    #: failed investigation — confirmed live on astroid#769 (2026-08-30):
+    #: round 2's localize() suspects were byte-identical to round 1's, and
+    #: both rounds spent their full sample budget re-investigating the same
+    #: file. Once a suspect is exhausted, route to the next untried one.
+    exhausted_files: dict[str, str] = {}
 
     for round_no in range(1, max_rounds + 1):
         if time.time() - t0 > per_issue_seconds:
@@ -545,20 +868,26 @@ def repair_loop_agentic(project_dir, llm: ChatLLM, tools: ToolBackend, traj: Tra
 
         signals = extract_signals(res.full_output)
         suspects = localize(signals, tools, traj, project_dir,
-                             known_files=list((tasks_by_file or {}).keys()))
+                             known_files=list((tasks_by_file or {}).keys()),
+                             output=res.full_output, spectrum=spectrum_scores)
         if not suspects:
             traj.log("repair", result="localization found no suspects", round=round_no)
             break
 
         before = _failure_count_for(res)
-        top = suspects[0]
+        top = next((s for s in suspects if s.file not in exhausted_files), suspects[0])
+        if exhausted_files and top.file != suspects[0].file:
+            traj.log("repair_localize_promote", round=round_no, from_file=suspects[0].file,
+                     to_file=top.file, exhausted=list(exhausted_files.keys()))
         emit("repair_round", "running", f"round {round_no}: investigating {top.file}")
         task_prompt = (
             f"# Failing test output (truncated)\n```\n{truncate(res.output, 3500)}\n```\n\n"
             f"# Localization (ranked suspects)\n" +
             "\n".join(f"- {s.file} (score {s.score:.1f}): {'; '.join(s.evidence[:2])}"
+                      + (f"  [ALREADY TRIED — {exhausted_files[s.file]}]" if s.file in exhausted_files else "")
                       for s in suspects[:4]) +
             f"\n\nPrime suspect: {top.file}. Investigate, find the root cause, PATCH it, verify, SUBMIT."
+            + _format_exhaustion_note(exhausted_files)
         )
         if not (project_dir / top.file).exists():
             task_prompt += (
@@ -619,23 +948,28 @@ def repair_loop_agentic(project_dir, llm: ChatLLM, tools: ToolBackend, traj: Tra
         if not candidates:
             traj.log("repair", result="no candidate produced", round=round_no, file=top.file)
             emit("repair_round", "failed", f"round {round_no}: no candidate patch produced")
+            exhausted_files[top.file] = "no candidate produced within turn budget"
             continue
 
-        # --- execution-based selection: apply → test → restore, per candidate
-        target = project_dir / top.file
-        existed_before = target.exists()
-        original = target.read_text(errors="replace") if existed_before else ""
+        # --- execution-based selection: apply → test → restore, per candidate.
+        # Each candidate gets ITS OWN target/original — a candidate's file
+        # may differ from `top.file` (the model's `patch` call can name a
+        # different, correctly-investigated path; see Candidate.original's
+        # docstring) — never assume every candidate shares one target.
         for cand in candidates:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(cand.new_content)
+            cand_target = project_dir / cand.file
+            cand.existed_before = cand_target.exists()
+            cand.original = cand_target.read_text(errors="replace") if cand.existed_before else ""
+            cand_target.parent.mkdir(parents=True, exist_ok=True)
+            cand_target.write_text(cand.new_content)
             r = run_test(test_cmd, image, project_dir, timeout=timeout)
             cand.failures = _failure_count_for(r)
             traj.log("candidate_eval", round=round_no, file=cand.file,
                      diff=cand.diff_size, failures=cand.failures, turns=cand.turns)
-            if existed_before:
-                target.write_text(original)
+            if cand.existed_before:
+                cand_target.write_text(cand.original)
             else:
-                target.unlink(missing_ok=True)
+                cand_target.unlink(missing_ok=True)
 
         green = [c for c in candidates if c.failures == 0]
         if green:
@@ -646,24 +980,26 @@ def repair_loop_agentic(project_dir, llm: ChatLLM, tools: ToolBackend, traj: Tra
                 traj.log("repair", result="no candidate improved state", round=round_no,
                          best=[c.failures for c in candidates])
                 emit("repair_round", "failed", f"round {round_no}: no candidate improved on {before} failing")
+                exhausted_files[top.file] = "candidates produced but none improved on the failing state"
                 continue
 
-        blast_violations = _blast_radius_violations(top.file, original, winner.new_content, tools)
+        blast_violations = _blast_radius_violations(winner.file, winner.original, winner.new_content, tools)
         if blast_violations:
             traj.log("repair", result="winner rejected by blast-radius gate", round=round_no,
-                     file=top.file, violations=blast_violations)
+                     file=winner.file, violations=blast_violations)
             emit("repair_round", "failed", f"round {round_no}: winner rejected (blast-radius violation)")
             pending_violations = blast_violations
             continue
 
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(winner.new_content)
-        commit(project_dir, f"forge: repair {top.file} (round {round_no}, "
+        winner_target = project_dir / winner.file
+        winner_target.parent.mkdir(parents=True, exist_ok=True)
+        winner_target.write_text(winner.new_content)
+        commit(project_dir, f"forge: repair {winner.file} (round {round_no}, "
                             f"{'green' if winner.failures == 0 else 'best-effort'}, "
                             f"diff {winner.diff_size})")
-        if top.file not in repaired:
-            repaired.append(top.file)
-        tools.reindex_file(top.file)
+        if winner.file not in repaired:
+            repaired.append(winner.file)
+        tools.reindex_file(winner.file)
 
         res = run_test(test_cmd, image, project_dir, timeout=timeout)
         now = _failure_count_for(res)
