@@ -129,8 +129,26 @@ def generate_regression_test(llm: OpenAICompatLLM, bridge, project_dir: Path,
     tokens = 0
     trace = []
     turns = 0
+    wrote_file = False
     for turns in range(1, max_turns + 1):
-        turn = llm.chat_with_tools(messages, tools, temperature=0.2, max_tokens=2048)
+        # Confirmed live (rca_pilot_runs_1_3.md F4, sphinx#13180): raising
+        # max_tokens alone does NOT fix this — the model isn't token-starved,
+        # it just keeps exploring (search_symbol/file_skeleton/view_file)
+        # right up to the turn budget without ever attempting write_file. With
+        # 2 turns left, force the issue: write now with what's already been
+        # learned, or the attempt fails outright with nothing generated.
+        if turns == max_turns - 1 and not wrote_file:
+            messages.append({"role": "user", "content":
+                f"{max_turns - turns + 1} turn(s) remain. Stop exploring — call "
+                "write_file NOW with the regression test, using what you've already "
+                "learned about the code. If write_file is not called this turn, no "
+                "test will be generated and this entire attempt fails."})
+        # max_tokens must clear a reasoning model's thinking head (qwen3.5 et
+        # al. burn thousands of tokens on <think> before emitting content or
+        # tool calls; 2048 starved every turn into an empty, tool-less reply
+        # -> "no regression test generated"). 16384 matches the generation-loop
+        # convention (generate_batch_agentic uses 32768 for the bigger batch).
+        turn = llm.chat_with_tools(messages, tools, temperature=0.2, max_tokens=16384)
         calls += 1
         tokens += (llm.usage.prompt_tokens + llm.usage.completion_tokens) if False else 0  # tracked on llm.usage
         assistant = {"role": "assistant", "content": turn.content or ""}
@@ -151,6 +169,7 @@ def generate_regression_test(llm: OpenAICompatLLM, bridge, project_dir: Path,
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(args["content"])
                 result = f"OK wrote {args['path']} ({len(args['content'])} bytes)"
+                wrote_file = True
             elif name == "run_tests":
                 ok, out = _run_tests(project_dir, test_rel)
                 result = f"PASSED={ok}\n" + "\n".join(out.splitlines()[-16:])
