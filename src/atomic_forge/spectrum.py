@@ -81,7 +81,6 @@ regime.
 from __future__ import annotations
 
 import json
-import math
 import random
 import re
 import shlex
@@ -89,6 +88,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from .mlfl import spectrum as _mlfl_spectrum
 from .sandbox import run_test
 
 
@@ -270,30 +270,45 @@ def spectrum_localize(project_dir: Path, test_cmd: str, image: Optional[str],
         return {}
     sample = random.sample(candidates, min(max_passing_samples, len(candidates)))
 
-    ep: dict[tuple[str, int], int] = {}
+    per_test_coverage: dict[str, dict[str, set[int]]] = {failing_test: fail_lines}
+    passing_ids: list[str] = []
     for i, test_id in enumerate(sample):
         ok, lines_by_file = _run_one_with_coverage(
             project_dir, test_cmd, image, test_id, workdir / f"_spectrum_pass_{i}.json", timeout)
-        if not ok:
-            continue  # not actually passing right now — discard, don't count either way
-        for f, lines in lines_by_file.items():
-            for ln in lines:
-                key = (f, ln)
-                ep[key] = ep.get(key, 0) + 1
+        if not ok or not lines_by_file:
+            continue  # not actually passing right now, or nothing executed — discard
+        per_test_coverage[test_id] = lines_by_file
+        passing_ids.append(test_id)
 
-    # ef=1, nf=0 for every LINE the failing test touched (single failing
-    # spectrum) -> susp(line) = 1 / sqrt(1 + ep(line)). Roll up to one
-    # SpectrumHit per file by max over that file's own touched lines —
+    if not passing_ids:
+        # No usable passing sample -> no discriminating signal (every
+        # touched line would tie). Degrade to {} rather than fabricate a
+        # confident-looking uniform score — same philosophy as mlfl's
+        # spectrum core (see its module docstring).
+        return {}
+
+    # Scoring delegated to the shared, language-agnostic core (mlfl/spectrum.py,
+    # 51 tests) instead of a reimplemented inline loop. Mathematically
+    # identical here: with exactly one failing test, ef=1 for every
+    # returned line (only ef>0 lines are returned) and nf=1, so its
+    # Ochiai reduces to 1/sqrt(1+ep) — the same formula this module's
+    # docstring derives by hand.
+    mlfl_output = _mlfl_spectrum.compute_from_per_test_coverage(
+        per_test_coverage=per_test_coverage,
+        failing_test_ids=[failing_test],
+        passing_test_ids=passing_ids,
+        project_root=str(project_dir),
+    )
+    if not mlfl_output:
+        return {}
+
+    # Roll up mlfl's per-line results to one SpectrumHit per file by max —
     # proven the only sound rollup (module docstring): invariant to file
     # size, unlike sum (can invert the ranking) or mean (margin shrinks
     # as file size grows).
     hits: dict[str, SpectrumHit] = {}
-    for f, lines in fail_lines.items():
-        best_score, best_line, best_ep = -1.0, 0, 0
-        for ln in lines:
-            e = ep.get((f, ln), 0)
-            score = 1.0 / math.sqrt(1 + e)
-            if score > best_score:
-                best_score, best_line, best_ep = score, ln, e
-        hits[f] = SpectrumHit(score=best_score, line=best_line, ep=best_ep)
+    for cand in mlfl_output["ranked_candidates"]:
+        existing = hits.get(cand.file_path)
+        if existing is None or cand.score > existing.score:
+            hits[cand.file_path] = SpectrumHit(score=cand.score, line=cand.line, ep=cand.ep)
     return hits
