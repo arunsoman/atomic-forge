@@ -35,6 +35,8 @@ from .llm import ChatLLM
 from .models import AtomicTask
 from .repair import failure_count_for as _failure_count_for
 from .sandbox import ProgressCallback, TestStack, commit, detect_test_stack, lint_gate, run_test, truncate
+from .mlfl import fusion
+from .mlfl.spectrum import SpectrumResult
 from .spectrum import SpectrumHit, spectrum_localize
 from .stacks import is_test_file as _is_test_file
 from .symbols import SymbolIndex
@@ -375,6 +377,32 @@ def _semantic_query(signals: FailureSignals, output: str) -> str:
     return signals.test_nodes[0] if signals.test_nodes else (signals.test_files[0] if signals.test_files else "")
 
 
+def _spectrum_to_fusion_input(spectrum: dict[str, "SpectrumHit"]) -> dict:
+    """Wrap file-rolled-up SpectrumHits into mlfl.spectrum's SpectrumResult/
+    score_spread shape so fusion.compute_fusion (built against mlfl's
+    line-level output) can consume localize()'s file-granularity data —
+    each file's hit.line is already spectrum.py's own most-suspicious-line
+    rollup, so one SpectrumResult per file is the correct working
+    granularity here (Suspect has no line field)."""
+    if not spectrum:
+        return {}
+    results = [
+        SpectrumResult(file_path=f, line=hit.line, function_name=None,
+                       score=hit.score, ef=1, ep=hit.ep, nf=1, np=hit.ep, N=1 + hit.ep)
+        for f, hit in spectrum.items()
+    ]
+    results.sort(key=lambda r: -r.score)
+    scores = [r.score for r in results]
+    unique_scores = set(round(s, 10) for s in scores)
+    return {
+        "ranked_candidates": results,
+        "score_spread": {
+            "min": min(scores), "max": max(scores),
+            "unique_scores": len(unique_scores), "total_candidates": len(results),
+        },
+    }
+
+
 def localize(signals: FailureSignals, tools: ToolBackend, traj: Trajectory,
              project_dir: Path, known_files: Optional[list[str]] = None,
              output: str = "", spectrum: Optional[dict[str, "SpectrumHit"]] = None) -> list[Suspect]:
@@ -393,36 +421,75 @@ def localize(signals: FailureSignals, tools: ToolBackend, traj: Trajectory,
     actually EXECUTED for this failure rather than what looks structurally
     or lexically related; scaled to compete with the stacked static-graph
     bumps above (a file the failing test uniquely touches, ep=0, scores
-    the full 10.0). Optional and additive, same as every other signal."""
+    the full 10.0). Optional and additive, same as every other signal.
+
+    FUSION: when `spectrum` covers 2+ files with distinct scores (real
+    discriminating power — see mlfl/fusion.py's variance gate), the CIE-
+    sourced signals below (failing_context, search_symbol, callers,
+    hybrid_search, traceback) are ALSO run through `mlfl.fusion.
+    compute_fusion` for those specific files: a bounded, principled
+    combination (the Spectrum-Dominance Lemma) that REPLACES the plain
+    additive bump() score for spectrum-covered files only, guaranteeing a
+    real spectrum lead can't be buried under noisy aux bumps the way an
+    unbounded sum could. Files with no spectrum coverage keep their plain
+    bump() score, untouched — fusion only re-scores files spectrum has an
+    opinion on, never removes a suspect. With <2 distinct spectrum scores
+    (e.g. exactly one file touched — the common case, and this function's
+    own existing test coverage) fusion degrades by design and every file
+    keeps its bump() score exactly as before this was added."""
     suspects: dict[str, Suspect] = {}
+    aux_signals: list[fusion.AuxiliarySignal] = []
     known_files = known_files or []
     known_set = set(known_files)
 
-    def bump(file: str, points: float, why: str, allow_missing: bool = False) -> None:
+    def _resolve(file: str, allow_missing: bool = False) -> Optional[str]:
         if Path(file).is_absolute():
             try:
                 file = str(Path(file).resolve().relative_to(project_dir.resolve()))
             except ValueError:
                 pass
         if _is_test_file(file):
-            return
+            return None
         # Confirmed live on astroid#769 (2026-08-30): hybrid_search's
         # lexical leg matched a vendored `.venv/.../_pytest/terminal.py`
         # on pytest's own "short test summary" wording and made it the
         # ONLY suspect for two full rounds — every sample burned its turn
         # budget patching a dependency instead of project source.
         if set(Path(file).parts) & _VENDOR_DIRS:
-            return
+            return None
         if not allow_missing and not (project_dir / file).exists():
+            return None
+        return file
+
+    def bump(file: str, points: float, why: str, allow_missing: bool = False) -> None:
+        resolved = _resolve(file, allow_missing)
+        if resolved is None:
             return
-        s = suspects.setdefault(file, Suspect(file, 0.0))
+        s = suspects.setdefault(resolved, Suspect(resolved, 0.0))
         s.score += points
         s.evidence.append(why)
+
+    def add_aux(file: str, name: str, points: float, confidence: float, why: str) -> None:
+        """Record the same evidence bump() just applied as a fusion
+        AuxiliarySignal too, scored on fusion's [0,1] scale (points/5.0,
+        capped — 5.0 is the current max non-spectrum bump weight, missing-
+        module) and keyed to spectrum's own most-suspicious line for this
+        file when spectrum covers it, since fusion matches signals to
+        spectrum candidates by exact file:line (mlfl/fusion.py)."""
+        resolved = _resolve(file)
+        if resolved is None:
+            return
+        line = spectrum[resolved].line if spectrum and resolved in spectrum else 0
+        aux_signals.append(fusion.AuxiliarySignal(
+            name=name, file_path=resolved, line=line,
+            score=min(points / 5.0, 1.0), confidence=confidence, evidence=why,
+        ))
 
     for p in signals.traceback_paths:
         resolved = _resolve_traceback_path(project_dir, p)
         if resolved:
             bump(resolved, 3.0, "named in traceback")
+            add_aux(resolved, "traceback", 3.0, 0.9, "named in traceback")
 
     for specifier, requiring_rel in signals.missing_modules:
         resolved = _resolve_node_missing_module(project_dir, specifier, requiring_rel)
@@ -446,7 +513,9 @@ def localize(signals: FailureSignals, tools: ToolBackend, traj: Trajectory,
             continue
         for r in ctx.get("results", []):
             pts = 4.0 if r["distance"] == 1 else 2.0
-            bump(r["file"], pts, f"distance-{r['distance']} from failing test ({r['symbol']})")
+            why = f"distance-{r['distance']} from failing test ({r['symbol']})"
+            bump(r["file"], pts, why)
+            add_aux(r["file"], "failing_context", pts, 0.8 if r["distance"] == 1 else 0.5, why)
 
     for name in signals.symbol_names[:5]:
         try:
@@ -454,13 +523,17 @@ def localize(signals: FailureSignals, tools: ToolBackend, traj: Trajectory,
         except Exception:  # noqa: BLE001 — structural signal, optional, never fatal
             continue
         for h in hits.get("results", [])[:2]:
-            bump(h["source_file"], 3.0, f"defines symbol '{name}' from error message")
+            why = f"defines symbol '{name}' from error message"
+            bump(h["source_file"], 3.0, why)
+            add_aux(h["source_file"], "search_symbol", 3.0, 0.6, why)
         try:
             callers = tools.callers(name).get("results", [])
         except Exception:  # noqa: BLE001 — structural signal, optional, never fatal
             callers = []
         for c in callers[:3]:
-            bump(c["caller_file"], 1.5, f"calls '{name}' (possible import/usage site)")
+            why = f"calls '{name}' (possible import/usage site)"
+            bump(c["caller_file"], 1.5, why)
+            add_aux(c["caller_file"], "callers", 1.5, 0.4, why)
 
     # Semantic signal — optional (only CIE-backed tool backends implement
     # this) and best-effort: an embeddings/index outage must never break
@@ -473,7 +546,9 @@ def localize(signals: FailureSignals, tools: ToolBackend, traj: Trajectory,
                 for h in hits.get("results", [])[:6]:
                     src = h.get("source_file")
                     if src:
-                        bump(src, 3.5, f"semantically relevant to failure ({h.get('name', '?')})")
+                        why = f"semantically relevant to failure ({h.get('name', '?')})"
+                        bump(src, 3.5, why)
+                        add_aux(src, "hybrid_search", 3.5, 0.5, why)
         except Exception:  # noqa: BLE001 — semantic search is optional, never fatal
             pass
 
@@ -486,6 +561,24 @@ def localize(signals: FailureSignals, tools: ToolBackend, traj: Trajectory,
     for f, hit in (spectrum or {}).items():
         bump(f, hit.score * 10.0,
              f"spectrum: line {hit.line} uniquely suspicious (Ochiai={hit.score:.2f}, ep={hit.ep})")
+
+    # Bounded fusion (mlfl/fusion.py): re-score spectrum-covered files by
+    # combining their spectrum score with the aux signals collected above,
+    # REPLACING the plain additive bumps just applied to those specific
+    # files. Degrades to a no-op — see docstring — whenever spectrum
+    # doesn't have 2+ distinct scores to protect, or has no aux overlap at
+    # all (falls back to pure spectrum ranking internally, same *10 scale
+    # as the bump above); every non-spectrum-covered file is untouched.
+    if spectrum:
+        spectrum_output = _spectrum_to_fusion_input(spectrum)
+        fusion_output = fusion.compute_fusion(spectrum_output, aux_signals) if spectrum_output else {}
+        for fc in (fusion_output or {}).get("ranked_candidates", []):
+            s = Suspect(fc.file_path, fc.fused_score * 10.0)  # same x10 scale as the bump above
+            s.evidence.append(
+                f"fused: spectrum={fc.spectrum_score:.3f} + aux={fc.auxiliary_bonus:.3f}"
+                + (" [spectrum-protected]" if fc.is_spectrum_protected else ""))
+            s.evidence.extend(f"[{sig.name}] {sig.evidence}" for sig in fc.auxiliary_signals)
+            suspects[fc.file_path] = s
 
     ranked = sorted(suspects.values(), key=lambda s: -s.score)
 
