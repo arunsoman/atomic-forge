@@ -234,6 +234,19 @@ def main() -> int:
         copied = copy_artifacts(work_root, repo, number, slug)
         if copied:
             row["artifacts"] = copied
+        # tool-call log (which tools did the LLM call, per phase) — the
+        # run-economics instrument; failures and successes both feed it
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from tools_log import parse as tools_parse  # noqa: PLC0415
+            tool_report = tools_parse(LOGS / slug / "trajectory.jsonl")
+            (LOGS / slug / "tools.json").write_text(json.dumps(tool_report, indent=2) + "\n")
+            row["tool_calls"] = sum(v["tool_calls"] for v in tool_report["phases"].values())
+            row["tool_report"] = tool_report["headline"]
+        except Exception as e:  # noqa: BLE001 — logging must never fail the run
+            row["tool_calls"] = None
+            print(f"[campaign] {slug}: tool-log unavailable ({e})")
+        row["model"] = os.environ.get("FORGE_MODEL", "default")
         append_ledger(row)
         print(f"[campaign] {slug}: {row['exit_reason']} ({row['wall_s']}s, "
               f"prompt={row['prompt_tokens']}, completion={row['completion_tokens']})")

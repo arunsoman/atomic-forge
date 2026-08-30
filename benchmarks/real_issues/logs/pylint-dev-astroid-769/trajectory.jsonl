@@ -1,0 +1,165 @@
+{"t": 58.227, "event": "test_run", "round": 0, "ok": false, "failures": 1, "output_tail": "                    [100%]\n=================================== FAILURES ===================================\n__________________________ test_constructor_inference __________________________\ntests/test_forge_769.py:25: in test_constructor_inference\n    assert inferred is not astroid.Uninferable, \"Uninferable inferred during attribute access\"\nE   AssertionError: Uninferable inferred during attribute access\nE   assert Uninferable is not Uninferable\nE    +  where Uninferable = astroid.Uninferable\n=========================== short test summary info ============================\nFAILED tests/test_forge_769.py::test_constructor_inference - AssertionError: Uninferable inferred during attribute access\nassert Uninferable is not Uninferable\n +  where Uninferable = astroid.Uninferable\n1 failed in 0.33s\n"}
+{"t": 65.235, "event": "localize", "signals": "tests=['tests/test_forge_769.py'] symbols=[] paths=[] exceptions=['AssertionError'] missing_modules=[]", "suspects": [{"file": "astroid/nodes/node_classes.py", "score": 14.0, "why": ["distance-1 from failing test (Call)", "distance-1 from failing test (If)"]}, {"file": "astroid/builder.py", "score": 12.0, "why": ["distance-1 from failing test (extract_node)", "distance-2 from failing test (parse)"]}, {"file": "astroid/context.py", "score": 10.0, "why": ["distance-1 from failing test (inferred)", "distance-2 from failing test (CallContext)"]}, {"file": "astroid/arguments.py", "score": 8.0, "why": ["distance-1 from failing test (__init__)", "distance-2 from failing test (_unpack_keywords)"]}, {"file": "astroid/nodes/_base_nodes.py", "score": 8.0, "why": ["distance-2 from failing test (get_children)", "distance-2 from failing test (_get_yield_nodes_skip_functions)"]}, {"file": "astroid/bases.py", "score": 6.0, "why": ["distance-1 from failing test (infer)", "distance-2 from failing test (infer_call_result)"]}, {"file": "astroid/nodes/scoped_nodes/scoped_nodes.py", "score": 4.0, "why": ["distance-1 from failing test (type)"]}, {"file": "astroid/nodes/scoped_nodes/mixin.py", "score": 2.0, "why": ["distance-2 from failing test (items)"]}]}
+{"t": 71.288, "event": "repair_s0_turn", "turn": 1, "action": "tool_calls", "payload_preview": "failing_context"}
+{"t": 71.41, "event": "repair_s1_turn", "turn": 1, "action": "tool_calls", "payload_preview": "failing_context"}
+{"t": 78.452, "event": "repair_s0_turn", "turn": 2, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 87.876, "event": "repair_s0_turn", "turn": 3, "action": "tool_calls", "payload_preview": "file_skeleton"}
+{"t": 92.204, "event": "repair_s1_turn", "turn": 2, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 97.496, "event": "repair_s0_turn", "turn": 4, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 101.425, "event": "repair_s1_turn", "turn": 3, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 103.497, "event": "repair_s0_turn", "turn": 5, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 108.968, "event": "repair_s1_turn", "turn": 4, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 115.317, "event": "repair_s1_turn", "turn": 5, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 119.91, "event": "repair_s0_turn", "turn": 6, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 126.037, "event": "repair_s1_turn", "turn": 6, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 126.618, "event": "repair_s0_turn", "turn": 7, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 134.277, "event": "repair_s1_turn", "turn": 7, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 141.534, "event": "repair_s1_turn", "turn": 8, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 152.56, "event": "repair_s1_turn", "turn": 9, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 165.803, "event": "repair_s1_turn", "turn": 10, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 180.41, "event": "repair_s0_turn", "turn": 8, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 184.232, "event": "repair_s1_turn", "turn": 11, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 186.899, "event": "repair_s1_turn", "turn": 12, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 196.831, "event": "repair_s0_turn", "turn": 9, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 201.437, "event": "repair_s0_turn", "turn": 10, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 212.952, "event": "repair_s0_turn", "turn": 11, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 219.871, "event": "repair_s0_turn", "turn": 12, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 249.533, "event": "repair_s0_turn", "turn": 13, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 254.867, "event": "repair_s0_turn", "turn": 14, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 261.317, "event": "repair_s1_turn", "turn": 13, "action": "unknown", "payload_preview": ""}
+{"t": 267.148, "event": "repair_s0_turn", "turn": 15, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 276.804, "event": "repair_s0_turn", "turn": 16, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 297.506, "event": "repair_s1_turn", "turn": 14, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 310.602, "event": "repair_s1_turn", "turn": 15, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 314.774, "event": "repair_s0_turn", "turn": 17, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 325.141, "event": "repair_s0_turn", "turn": 18, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 331.278, "event": "repair_s0_turn", "turn": 19, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 339.468, "event": "repair_s1_turn", "turn": 16, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 356.458, "event": "repair_s0_turn", "turn": 20, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 364.972, "event": "repair_s0_turn", "turn": 21, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 373.259, "event": "repair_s0_turn", "turn": 22, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 434.503, "event": "repair_s1_turn", "turn": 17, "action": "unknown", "payload_preview": ""}
+{"t": 452.014, "event": "repair_s1_turn", "turn": 18, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 455.393, "event": "repair_s1_turn", "turn": 19, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 457.44, "event": "repair_s1_turn", "turn": 20, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 460.819, "event": "repair_s1_turn", "turn": 21, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 463.891, "event": "repair_s1_turn", "turn": 22, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 468.342, "event": "repair_s1_turn", "turn": 23, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 520.11, "event": "repair_s0_turn", "turn": 23, "action": "unknown", "payload_preview": ""}
+{"t": 544.686, "event": "repair_s1_turn", "turn": 24, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 553.226, "event": "repair_s0_turn", "turn": 24, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 584.623, "event": "repair_s0_turn", "turn": 25, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 588.512, "event": "repair_s0_abort", "reason": "turn budget exhausted"}
+{"t": 588.512, "event": "repair_attempt", "sample": 0, "file": "astroid/nodes/node_classes.py", "produced": false, "reason": "turn budget (25) exhausted"}
+{"t": 610.765, "event": "repair_s1_turn", "turn": 25, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 614.294, "event": "repair_s1_abort", "reason": "turn budget exhausted"}
+{"t": 614.294, "event": "repair_attempt", "sample": 1, "file": "astroid/nodes/node_classes.py", "produced": false, "reason": "turn budget (25) exhausted"}
+{"t": 614.295, "event": "repair", "result": "no candidate produced", "round": 1, "file": "astroid/nodes/node_classes.py"}
+{"t": 619.406, "event": "localize", "signals": "tests=['tests/test_forge_769.py'] symbols=[] paths=[] exceptions=['AssertionError'] missing_modules=[]", "suspects": [{"file": "astroid/nodes/node_classes.py", "score": 14.0, "why": ["distance-1 from failing test (Call)", "distance-1 from failing test (If)"]}, {"file": "astroid/builder.py", "score": 12.0, "why": ["distance-1 from failing test (extract_node)", "distance-2 from failing test (parse)"]}, {"file": "astroid/context.py", "score": 10.0, "why": ["distance-1 from failing test (inferred)", "distance-2 from failing test (CallContext)"]}, {"file": "astroid/arguments.py", "score": 8.0, "why": ["distance-1 from failing test (__init__)", "distance-2 from failing test (_unpack_keywords)"]}, {"file": "astroid/nodes/_base_nodes.py", "score": 8.0, "why": ["distance-2 from failing test (get_children)", "distance-2 from failing test (_get_yield_nodes_skip_functions)"]}, {"file": "astroid/bases.py", "score": 6.0, "why": ["distance-1 from failing test (infer)", "distance-2 from failing test (infer_call_result)"]}, {"file": "astroid/nodes/scoped_nodes/scoped_nodes.py", "score": 4.0, "why": ["distance-1 from failing test (type)"]}, {"file": "astroid/nodes/scoped_nodes/mixin.py", "score": 2.0, "why": ["distance-2 from failing test (items)"]}]}
+{"t": 625.07, "event": "repair_s0_turn", "turn": 1, "action": "tool_calls", "payload_preview": "failing_context"}
+{"t": 625.272, "event": "repair_s1_turn", "turn": 1, "action": "tool_calls", "payload_preview": "failing_context"}
+{"t": 634.896, "event": "repair_s0_turn", "turn": 2, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 636.842, "event": "repair_s1_turn", "turn": 2, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 645.557, "event": "repair_s0_turn", "turn": 3, "action": "tool_calls", "payload_preview": "file_skeleton"}
+{"t": 649.439, "event": "repair_s1_turn", "turn": 3, "action": "tool_calls", "payload_preview": "file_skeleton"}
+{"t": 652.846, "event": "repair_s0_turn", "turn": 4, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 656.787, "event": "repair_s1_turn", "turn": 4, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 662.94, "event": "repair_s1_turn", "turn": 5, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 663.469, "event": "repair_s0_turn", "turn": 5, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 670.84, "event": "repair_s1_turn", "turn": 6, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 678.934, "event": "repair_s0_turn", "turn": 6, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 699.847, "event": "repair_s0_turn", "turn": 7, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 709.654, "event": "repair_s1_turn", "turn": 7, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 724.949, "event": "repair_s1_turn", "turn": 8, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 745.058, "event": "repair_s1_turn", "turn": 9, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 750.716, "event": "repair_s0_turn", "turn": 8, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 753.267, "event": "repair_s1_turn", "turn": 10, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 759.426, "event": "repair_s1_turn", "turn": 11, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 777.655, "event": "repair_s0_turn", "turn": 9, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 788.399, "event": "repair_s1_turn", "turn": 12, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 818.302, "event": "repair_s0_turn", "turn": 10, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 852.155, "event": "repair_s0_turn", "turn": 11, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 859.088, "event": "repair_s1_turn", "turn": 13, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 861.203, "event": "repair_s0_turn", "turn": 12, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 870.218, "event": "repair_s1_turn", "turn": 14, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 894.793, "event": "repair_s0_turn", "turn": 13, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 900.938, "event": "repair_s1_turn", "turn": 15, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 904.859, "event": "repair_s1_turn", "turn": 16, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 924.454, "event": "repair_s0_turn", "turn": 14, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 932.58, "event": "repair_s1_turn", "turn": 17, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 934.419, "event": "repair_s0_turn", "turn": 15, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 936.465, "event": "repair_s0_turn", "turn": 16, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 945.072, "event": "repair_s0_turn", "turn": 17, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 947.12, "event": "repair_s0_turn", "turn": 18, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 952.723, "event": "repair_s1_turn", "turn": 18, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 953.363, "event": "repair_s0_turn", "turn": 19, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 972.201, "event": "repair_s0_turn", "turn": 20, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 1014.194, "event": "repair_s0_turn", "turn": 21, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 1035.492, "event": "repair_s0_turn", "turn": 22, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 1073.996, "event": "repair_s0_turn", "turn": 23, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1091.507, "event": "repair_s1_turn", "turn": 19, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1101.281, "event": "repair_s1_turn", "turn": 20, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1105.636, "event": "repair_s0_turn", "turn": 24, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1110.961, "event": "repair_s1_turn", "turn": 21, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1122.365, "event": "repair_s0_turn", "turn": 25, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 1122.374, "event": "repair_s0_abort", "reason": "turn budget exhausted"}
+{"t": 1122.374, "event": "repair_attempt", "sample": 0, "file": "astroid/nodes/node_classes.py", "produced": false, "reason": "turn budget (25) exhausted"}
+{"t": 1124.275, "event": "repair_s1_turn", "turn": 22, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1155.092, "event": "repair_s1_turn", "turn": 23, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1233.229, "event": "repair_s1_turn", "turn": 24, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1252.685, "event": "repair_s1_turn", "turn": 25, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1256.398, "event": "repair_s1_abort", "reason": "turn budget exhausted"}
+{"t": 1256.398, "event": "repair_attempt", "sample": 1, "file": "astroid/nodes/node_classes.py", "produced": false, "reason": "turn budget (25) exhausted"}
+{"t": 1256.399, "event": "repair", "result": "no candidate produced", "round": 2, "file": "astroid/nodes/node_classes.py"}
+{"t": 1261.956, "event": "localize", "signals": "tests=['tests/test_forge_769.py'] symbols=[] paths=[] exceptions=['AssertionError'] missing_modules=[]", "suspects": [{"file": "astroid/nodes/node_classes.py", "score": 14.0, "why": ["distance-1 from failing test (Call)", "distance-1 from failing test (If)"]}, {"file": "astroid/builder.py", "score": 12.0, "why": ["distance-1 from failing test (extract_node)", "distance-2 from failing test (parse)"]}, {"file": "astroid/context.py", "score": 10.0, "why": ["distance-1 from failing test (inferred)", "distance-2 from failing test (CallContext)"]}, {"file": "astroid/arguments.py", "score": 8.0, "why": ["distance-1 from failing test (__init__)", "distance-2 from failing test (_unpack_keywords)"]}, {"file": "astroid/nodes/_base_nodes.py", "score": 8.0, "why": ["distance-2 from failing test (get_children)", "distance-2 from failing test (_get_yield_nodes_skip_functions)"]}, {"file": "astroid/bases.py", "score": 6.0, "why": ["distance-1 from failing test (infer)", "distance-2 from failing test (infer_call_result)"]}, {"file": "astroid/nodes/scoped_nodes/scoped_nodes.py", "score": 4.0, "why": ["distance-1 from failing test (type)"]}, {"file": "astroid/nodes/scoped_nodes/mixin.py", "score": 2.0, "why": ["distance-2 from failing test (items)"]}]}
+{"t": 1267.856, "event": "repair_s0_turn", "turn": 1, "action": "tool_calls", "payload_preview": "failing_context"}
+{"t": 1268.387, "event": "repair_s1_turn", "turn": 1, "action": "tool_calls", "payload_preview": "failing_context"}
+{"t": 1276.95, "event": "repair_s0_turn", "turn": 2, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1283.814, "event": "repair_s1_turn", "turn": 2, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1286.516, "event": "repair_s0_turn", "turn": 3, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1291.708, "event": "repair_s1_turn", "turn": 3, "action": "tool_calls", "payload_preview": "file_skeleton"}
+{"t": 1294.779, "event": "repair_s0_turn", "turn": 4, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1304.909, "event": "repair_s0_turn", "turn": 5, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1311.84, "event": "repair_s1_turn", "turn": 4, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1318.221, "event": "repair_s1_turn", "turn": 5, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1320.661, "event": "repair_s0_turn", "turn": 6, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1325.795, "event": "repair_s1_turn", "turn": 6, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1337.275, "event": "repair_s1_turn", "turn": 7, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1341.002, "event": "repair_s0_turn", "turn": 7, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1347.303, "event": "repair_s0_turn", "turn": 8, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1354.634, "event": "repair_s1_turn", "turn": 8, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1360.819, "event": "repair_s1_turn", "turn": 9, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1362.966, "event": "repair_s0_turn", "turn": 9, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 1368.09, "event": "repair_s0_turn", "turn": 10, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1379.473, "event": "repair_s0_turn", "turn": 11, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1405.059, "event": "repair_s0_turn", "turn": 12, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1409.257, "event": "repair_s1_turn", "turn": 10, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1422.773, "event": "repair_s0_turn", "turn": 13, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1427.585, "event": "repair_s1_turn", "turn": 11, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1448.601, "event": "repair_s0_turn", "turn": 14, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1481.141, "event": "repair_s0_turn", "turn": 15, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1489.76, "event": "repair_s0_turn", "turn": 16, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1505.717, "event": "repair_s0_turn", "turn": 17, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1540.634, "event": "repair_s0_turn", "turn": 18, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1542.486, "event": "repair_s1_turn", "turn": 12, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 1566.136, "event": "repair_s0_turn", "turn": 19, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 1579.488, "event": "repair_s0_turn", "turn": 20, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1593.054, "event": "repair_s0_turn", "turn": 21, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1595.119, "event": "repair_s1_turn", "turn": 13, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1621.457, "event": "repair_s1_turn", "turn": 14, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1630.878, "event": "repair_s1_turn", "turn": 15, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1668.673, "event": "repair_s0_turn", "turn": 22, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 1748.487, "event": "repair_s1_turn", "turn": 16, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 1819.342, "event": "repair_s0_turn", "turn": 23, "action": "tool_calls", "payload_preview": "run_shell"}
+{"t": 1824.903, "event": "repair_s0_turn", "turn": 24, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 1873.437, "event": "repair_s0_turn", "turn": 25, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 1878.166, "event": "repair_s0_abort", "reason": "turn budget exhausted"}
+{"t": 1878.166, "event": "repair_attempt", "sample": 0, "file": "astroid/nodes/node_classes.py", "produced": false, "reason": "turn budget (25) exhausted"}
+{"t": 1970.415, "event": "repair_s1_turn", "turn": 17, "action": "tool_calls", "payload_preview": "view_file"}
+{"t": 2170.918, "event": "repair_s1_turn", "turn": 18, "action": "tool_calls", "payload_preview": "search_symbol"}
+{"t": 2214.469, "event": "repair_s1_turn", "turn": 19, "action": "tool_calls", "payload_preview": "patch"}
+{"t": 2396.897, "event": "repair_s1_turn", "turn": 20, "action": "tool_calls", "payload_preview": "submit"}
+{"t": 2396.961, "event": "repair_s1_submit", "turn": 20, "accepted": true, "feedback": ""}
+{"t": 2398.131, "event": "candidate_eval", "round": 3, "file": "astroid/nodes/node_classes.py", "diff": 2, "failures": 1, "turns": 20}
+{"t": 2398.133, "event": "repair", "result": "no candidate improved state", "round": 3, "best": [1]}
+{"t": 2398.133, "event": "repair", "result": "wall-clock exhausted", "round": 4}

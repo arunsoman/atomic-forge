@@ -1,0 +1,1 @@
+{"at": "2026-08-30T05:09:43Z", "reason": "repair_exhausted", "detail": "rounds=5 final_failures=1", "issue": "https://github.com/pylint-dev/astroid/issues/769"}

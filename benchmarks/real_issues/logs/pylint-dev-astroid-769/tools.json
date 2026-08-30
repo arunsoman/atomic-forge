@@ -1,0 +1,51 @@
+{
+  "source": "benchmarks/real_issues/logs/pylint-dev-astroid-769/trajectory.jsonl",
+  "test_runs": 1,
+  "pipeline_ops": {
+    "repair_attempt": 5,
+    "repair": 4,
+    "localize": 3,
+    "repair_s0_abort": 3,
+    "repair_s1_abort": 2,
+    "repair_s1_submit": 1,
+    "candidate_eval": 1
+  },
+  "phases": {
+    "repair_s0": {
+      "tool_calls": 74,
+      "tools": {
+        "view_file": 34,
+        "search_symbol": 18,
+        "run_shell": 17,
+        "failing_context": 3,
+        "file_skeleton": 2
+      },
+      "read_share": 0.7,
+      "write_share": 0.0,
+      "test_share": 0.23,
+      "top_tool": "view_file",
+      "read_write_ratio": Infinity
+    },
+    "repair_s1": {
+      "tool_calls": 68,
+      "tools": {
+        "view_file": 30,
+        "search_symbol": 17,
+        "run_shell": 14,
+        "failing_context": 3,
+        "file_skeleton": 2,
+        "patch": 1,
+        "submit": 1
+      },
+      "read_share": 0.69,
+      "write_share": 0.0,
+      "test_share": 0.21,
+      "top_tool": "view_file",
+      "read_write_ratio": Infinity
+    }
+  },
+  "headline": {
+    "repair_s0": "74 calls, inf read:write",
+    "repair_s1": "68 calls, inf read:write"
+  }
+}
