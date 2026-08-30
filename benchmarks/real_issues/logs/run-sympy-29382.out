@@ -1,0 +1,5 @@
+[forge fix] fetching issue sympy/sympy#29382
+[forge fix] cloning sympy/sympy -> /tmp/forge_fix/sympy-29382
+[forge fix] bootstrap gate: detect stack + probe tests ...
+[forge fix] abort at bootstrap gate: failed_deterministic — test command exited 4 — a runner crash or misuse, not a completed test run; the agentic fallback (R16c) would attempt this checkout (enable with FORGE_ENABLE_AGENTIC_BOOTSTRAP=1)
+[forge] pr-url=

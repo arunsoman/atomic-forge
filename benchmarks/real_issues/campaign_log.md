@@ -18,5 +18,27 @@ Protocol: per-issue runs, 1 open PR/repo, AI-policy grep before raising, honest 
 1. bootstrap gate must install repo extras (e.g. `.[dataframe]`) or probe tests from the affected module — "suite runnable" ≠ "affected module runnable"
 2. `pytest-cov` should join the default probe venv when repo pytest config requests cov
 
-## Run 2 — sympy/sympy#29382 (`show_linprog` SympifyError without A_eq)
-pending
+## Run 3 — sphinx-doc/sphinx#13180 (napoleon section ordering)
+
+Ops-fixed relaunch (REST-fed issue body + user-vouched clone) reached the LLM pipeline:
+- CIE index on sphinx: OK (full graph)
+- testgen: **abort after 10 turns** — `no_test_generated`, 10 llm_calls, 99.6k prompt tok
+- exit reason: `no_test_generated`
+- lesson: render-order bugs (HTML section sequence, docstring rendering) are a weak spot
+  for the testgen agent — candidate for operator-supplied tests (`--test-file`) or more turns
+
+## F1 family — implemented 2026-08-30 (this session)
+
+- **F1** `fix --repro <script>`: probe on HEAD before any LLM spend; exit 0 → abort
+  `issue_already_fixed`; after repair must flip to exit 0 else abort `repro_still_failing`
+- **F1b** clone integrity: post-clone `git rev-parse --verify HEAD` + one retry (sphinx's
+  zero-commit clone can never be returned again)
+- **F1c** fetch_issue channel fallback: GraphQL → `gh api` REST → unauthenticated curl REST;
+  `state` now rides along in the issue dict (cheap open/closed re-verification)
+- new EXIT_REASONS: `issue_already_fixed`, `repro_still_failing`
+- tests: `tests/test_issue_fetch_and_integrity.py` (16 tests) — full suite 314 passed
+
+## Run 4 — pending
+
+astroid#769 (inference through class constructor + type hints), this time WITH a `--repro`
+script written from the issue text — exercising F1 end-to-end.

@@ -58,6 +58,10 @@ def main(argv=None) -> int:
     p.add_argument("phase", choices=["run", "generate", "qa", "repair", "decompose", "watch", "fix", "fix-comment"])
     p.add_argument("--tasks", default="tasks.json")
     p.add_argument("--project-dir", default="./forge_out")
+    p.add_argument("--work-root", default=None,
+                   help="[fix] directory for cold-clone checkouts (default /tmp/forge_fix). "
+                        "Point campaigns at a durable dir — an ephemeral work_root wipes "
+                        "trajectories/checkpoints/learning.json on OS tmp cleanup.")
     p.add_argument("--test-cmd", default=None, help="force a test command (default: auto-detect)")
     p.add_argument("--max-rounds", type=int, default=None,
                    help="repair/fix max rounds (default: 3 for repair, 5 for fix)")
@@ -237,6 +241,7 @@ def main(argv=None) -> int:
                     max_rounds=args.max_rounds or 5, max_turns=args.max_turns,
                     dry_run=args.dry_run, pr_base=args.pr_base, pr_branch=args.pr_branch,
                     pr_title=args.pr_title, issue_body_file=issue_body_file, samples=args.samples,
+                    work_root=(Path(args.work_root) if args.work_root else None),
                     architect_mode=args.architect, skip_bootstrap=args.skip_bootstrap,
                     bootstrap_timeout=args.bootstrap_timeout, repro=repro)
         print(f"[forge] pr-url={r.get('pr_url') or ''}")

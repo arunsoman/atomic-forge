@@ -84,6 +84,29 @@ correctly identified dtype-loss root cause and fix direction on run 1; SQLite ch
 ### P2 — later
 - MetaOriginTracker (proposed by run-1 postmortem) — good candidate, but P0/P1 land the reliability win first
 
+## Addendum 2 — findings mined from ALL past failures (round-2 sweep + pilot)
+
+### From the 55-attempt round-2 sweep (benchmarks/README.md)
+
+| Finding | Evidence | Status |
+|---|---|---|
+| **Silent unchanged PRs** — 3 real PRs (psf/black#5214, psf/black#4420, Delgan/loguru#1502) died with opaque `No commits between X and Y` after the repair loop found the test green at round 0 and PR'd an unchanged branch | fix.py:443 comment | ✅ fixed in-code (rounds==0 gate) |
+| **oracle_reject = 27/55** — the single largest bucket: CIE couldn't confirm the bug reproduces at HEAD within budget | benchmarks/README.md | ⚠ partially addressed by F1 (operator repro proves reproducibility independently); residual = testgen expressiveness limits |
+| **repair_fail = 23/55** — reproduced but no green fix within round budget | same | open; scale `--max-rounds`/`--samples` per bug-class in campaign config |
+| **2 bootstrap_fail** — base-image LLM trust + Makefile false-positive (gunicorn) | fixed w/ tests | ✅ fixed (previous session) |
+| **Maintainer-closed PR (loguru) never re-raised** — closure respect norm | benchmarks/README.md:85 | ✅ protocol: no re-raise after maintainer closure unless invited |
+| **Forks migrated to org (kannamma-labs)** — PR identity centralization | same | ✅ standing rule |
+
+### From this session's pilot failures
+
+| # | Finding | Evidence | Fix-ID |
+|---|---|---|---|
+| **F4** | **Testgen never writes**: sphinx run made 10 tool calls (99.6k prompt / 1.8k completion tok), zero write attempts; near-budget turns repeat the same 4201-char search result (t8≈t10). Render-order bug class has no fixture-first strategy available | logs/run-sphinx-13180.out | add `--test-file` (operator-authored test skips testgen); budget-aware nudge ("must attempt a write by turn N−2"); duplicate-tool-call short-circuit; tag render-order bugs in targets |
+| **F5** | **Artifact wipe**: all /tmp/forge_fix workdirs (trajectories, checkpoints, learning.json) vanished mid-session — ephemeral work_root destroys forensic evidence | empty /tmp/forge_fix this session | campaign runner copies `.forge/{learning.json,exit_audit.jsonl,trajectory.jsonl}` + PR body into `benchmarks/real_issues/logs/<run>/` at every terminal event; expose `--work-root` CLI (done in this commit) and point campaigns at a durable dir |
+| **F6** | **Gate verdict overstates health**: bootstrap "passed" with probe output opening `FFFFFFFFFFFFFFFF` (16 F's before 2%) — "suite runs" ≠ "suite green" | run-1 dask out: `exit=1, output began: ...FFFFFFFF` | gate persists probe tail + F-rate into `.forge/gate.json`; runs proceeding on a mass-failing probe get flagged into the run result |
+| **F7** | **Fault localization returned zero suspects** on a 42k-node graph for a dtype-loss bug; repair round entered with no patch attempted (wasted round) | learning.json paths_tried | implement postmortem-proposed `MetaOriginTracker` CIE tool (dtype/meta dataflow provenance); treat "0 suspects" as a distinct repair-loop precondition event in the trajectory |
+| **F8** | **Failure economics**: a failed LLM-run costs ~64–100k prompt tokens; staleness was 2/4. F1 removes the stale half; F4's early-write cap trims the testgen-exploration tail | usage lines in run logs | add per-run cost columns (llm_calls / prompt / completion) to campaign_log — data already printed by forge |
+
 ## Re-run queue (runtime-verified open)
 
 `gh api` snapshot 2026-08-30: sphinx#13180 ✅ · sphinx#13841 ✅ · astroid#769 ✅ · dask#11447 ✅ · black#3294 ❌ dropped

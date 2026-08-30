@@ -1,0 +1,19 @@
+[forge fix] using issue body from /tmp/camp/sphinx-13180-body.md
+[forge fix] setting up venv + installing project (this can take a bit)
+[forge fix] on branch forge/fix-issue-13180
+[forge fix] indexing code graph with CIE ...
+[forge fix] CIE generating regression test at tests/test_forge_13180.py ...
+  [testgen] t1: search_symbol -> 605 chars
+  [testgen] t2: file_skeleton -> 23042 chars
+  [testgen] t3: view_file -> 3842 chars
+  [testgen] t4: view_file -> 6240 chars
+  [testgen] t5: search_symbol -> 188 chars
+  [testgen] t6: search_symbol -> 183 chars
+  [testgen] t7: search_symbol -> 184 chars
+  [testgen] t8: search_symbol -> 4201 chars
+  [testgen] t9: view_file -> 7671 chars
+  [testgen] t10: search_symbol -> 4201 chars
+[forge fix] abort: no regression test generated; no PR raised.
+[forge fix] llm_calls=10 prompt_tokens=99664 completion_tokens=1835
+[forge fix] trajectory: /tmp/forge_fix/sphinx-13180/.forge/trajectory.jsonl
+[forge] pr-url=
