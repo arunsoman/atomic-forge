@@ -135,6 +135,52 @@ def test_run_fix_blocks_pr_while_repro_still_fails(monkeypatch, fake_repo):
     assert raised["called"] is False
 
 
+# ------------------------------------------------------------- F4 test-file
+def test_run_fix_operator_test_skips_testgen(monkeypatch, fake_repo, tmp_path):
+    """--test-file: operator-authored test bypasses testgen, is copied to
+    tests/test_forge_<id>.py, oracle-gated, and proceeds to the (dry-run)
+    PR with test_source=operator + testgen_turns=0."""
+    import atomic_forge.fix as F
+    from test_fix import _DummyLLM, _stub_chain
+    called = {}
+    monkeypatch.setattr(F, "generate_regression_test",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("testgen ran")))
+    raised = _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
+    ib = fake_repo / "issue.txt"; ib.write_text("add(2,3) should be 5 but returns -1")
+    op = tmp_path / "my_labeled_test.py"; op.write_text("from mod import add\ndef test_a():\n    assert add(2, 3) == 5\n")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=ib, test_file=op, dry_run=True)
+    assert r["success"] is True and r["test_source"] == "operator"
+    assert r["testgen_turns"] == 0
+    assert (fake_repo / "tests" / "test_forge_1.py").read_text() == op.read_text()
+    assert raised["called"] is True
+
+
+def test_run_fix_operator_test_that_does_not_reproduce_aborts(monkeypatch, fake_repo, tmp_path):
+    """Oracle still gates operator tests: a passing-on-HEAD test aborts as
+    test_not_reproducing (same honesty gate as generated tests)."""
+    import atomic_forge.fix as F
+    from test_fix import _DummyLLM, _stub_chain
+    raised = _stub_chain(monkeypatch, oracle_fails=False, repair_success=True, green=False)
+    ib = fake_repo / "issue.txt"; ib.write_text("add(2,3) should be 5 but returns -1")
+    op = tmp_path / "op_test.py"; op.write_text("def test_x():\n    assert True\n")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=ib, test_file=op, dry_run=True)
+    assert r["success"] is False and r["stage"] == "validate"
+    assert "operator-supplied" in r["reason"]
+    assert raised["called"] is False
+
+
+def test_run_fix_missing_test_file_fails_fast(fake_repo, tmp_path):
+    import atomic_forge.fix as F
+    import pytest
+    from test_fix import _DummyLLM
+    with pytest.raises(FileNotFoundError):
+        F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=fake_repo / "x.txt",
+                  test_file=tmp_path / "nope.py", dry_run=True)
+
+
 # ------------------------------------------------------------- F1b clone
 def _git_head(dest: Path):
     return subprocess.run(["git", "-C", str(dest), "rev-parse", "HEAD"],

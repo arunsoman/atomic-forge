@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -154,8 +155,9 @@ def run_fix(url: str, llm: OpenAICompatLLM, *,
             samples: int = 2, max_turns_per_attempt: int = 25,
             architect_mode: bool = False,
             skip_bootstrap: bool = False, bootstrap_timeout: int = 600,
-            repro: Optional[Path] = None) -> dict:
+            repro: Optional[Path] = None, test_file: Optional[Path] = None) -> dict:
     """Run the full fix pipeline. Returns a report dict (always; includes
+    `success`, `stage`, and either `pr_url` or `reason` on failure). Returns a report dict (always; includes
     `success`, `stage`, and either `pr_url` or `reason` on failure).
 
     `skip_bootstrap`: only meaningful for the cold-clone path — a
@@ -171,7 +173,16 @@ def run_fix(url: str, llm: OpenAICompatLLM, *,
     `issue_already_fixed` (stale issue); after repair the same probe
     must flip to exit 0 before a PR is raised (`repro_still_failing`
     aborts) — the generated regression test stays the primary oracle,
-    this is the independent second witness."""
+    this is the independent second witness.
+
+    `test_file` (F4 operator-supplied test): path to a caller-authored
+    regression test copied to `tests/test_forge_<id>.py`, skipping testgen
+    entirely. The oracle still gates it — it must fail on HEAD (a test
+    that passes is the issue_already_fixed abort, "test_not_reproducing"
+    if it can't reproduce). Use when the testgen agent can't express a bug
+    (render-order classes, fixture-heavy asserts) — the campaign pilot's
+    #1 residual loss bucket. Everything downstream (repair loop, ground
+    truth, blast radius, PR) is unchanged."""
     require_cie()
     owner, repo, number = parse_issue_url(url)
     upstream = upstream_slug(owner, repo)
@@ -209,7 +220,7 @@ def run_fix(url: str, llm: OpenAICompatLLM, *,
         pr_title=pr_title, work_root=work_root, samples=samples,
         max_turns_per_attempt=max_turns_per_attempt, architect_mode=architect_mode,
         skip_bootstrap=skip_bootstrap, bootstrap_timeout=bootstrap_timeout,
-        repro=repro,
+        repro=repro, test_file=test_file,
     )
 
 
@@ -272,7 +283,8 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
                       pr_title: Optional[str], work_root: Optional[Path],
                       samples: int, max_turns_per_attempt: int, architect_mode: bool,
                       skip_bootstrap: bool = False, bootstrap_timeout: int = 600,
-                      repro: Optional[Path] = None) -> dict:
+                      repro: Optional[Path] = None,
+                      test_file: Optional[Path] = None) -> dict:
     """Shared body of `run_fix`/`run_fix_from_comment` from "get a runnable
     checkout" onward — everything upstream of this (parsing the intake
     source into an `issue` dict + `bug` description) is the only part
@@ -390,26 +402,43 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
     (project_dir / "tests").mkdir(exist_ok=True)
 
     try:
-        # 5. CIE generates a regression test that reproduces the bug — fed
-        # the FULL bug description, comments included (see
+        # 5. regression test that reproduces the bug: operator-authored via
+        # --test-file (testgen skipped — its oracle still gates), or CIE-
+        # generated, fed the FULL bug description, comments included (see
         # issue_to_bug_description): a thin original report plus a
         # maintainer's repro steps in a follow-up comment is common, and
         # testgen used to only ever see the original report.
-        print(f"[forge fix] CIE generating regression test at {test_rel} ...")
-        gen = generate_regression_test(llm, bridge, project_dir, test_rel, bug, max_turns=max_turns)
+        if test_file is not None:
+            src = Path(test_file)
+            if not src.is_file():
+                raise FileNotFoundError(f"--test-file not found: {src}")
+            dest = project_dir / test_rel
+            if src.resolve() != dest.resolve():
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(src, dest)
+            result["test_source"] = "operator"
+            print(f"[forge fix] operator-supplied test at {test_rel} (testgen skipped)")
+            gen = {"generated": dest.read_text(), "turns": 0}
+        else:
+            print(f"[forge fix] CIE generating regression test at {test_rel} ...")
+            gen = generate_regression_test(llm, bridge, project_dir, test_rel, bug, max_turns=max_turns)
         result["testgen_turns"] = gen["turns"]
         if not gen["generated"].strip():
-            result.update(stage="testgen", reason="CIE produced no test file")
+            result.update(stage="testgen", reason="no test file ("
+                          + ("operator-supplied file is empty" if test_file is not None
+                             else "CIE produced nothing") + ")")
             record_exit(project_dir, reason="no_test_generated",
-                       detail=f"testgen agent used its full {max_turns}-turn budget "
-                              "(comments included in the bug description) without writing a test",
+                       detail=(f"operator-supplied test file was empty" if test_file is not None else
+                               f"testgen agent used its full {max_turns}-turn budget "
+                               "(comments included in the bug description) without writing a test"),
                        extra={"issue": url})
             print("[forge fix] abort: no regression test generated; no PR raised.")
             return result
         fails, out = oracle_fails_on_buggy(project_dir, test_rel, venv_py)
         result["test_reproduces_bug"] = fails
         if not fails:
-            result.update(stage="validate", reason="generated test does not reproduce the bug "
+            result.update(stage="validate", reason=("operator-supplied" if test_file is not None
+                          else "generated") + " test does not reproduce the bug "
                           "(passes on buggy code or has a collection error)")
             record_exit(project_dir, reason="test_not_reproducing",
                        detail=out[-500:], extra={"issue": url})

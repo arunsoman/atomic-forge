@@ -1,0 +1,14 @@
+{
+  "name": "batch1",
+  "note": "runtime-verified open 2026-08-30; GraphQL dead on this account so issue fetch rides F1c REST fallback; state checks here are unauth curl",
+  "tasks": [
+    {"url": "https://github.com/pylint-dev/astroid/issues/769",
+     "note": "inference through class constructor with type hints; small repo, fast suite"},
+    {"url": "https://github.com/sphinx-doc/sphinx/issues/13180",
+     "note": "napoleon numpydoc class section ordering; render-order class — candidate for --test-file if testgen stalls again"},
+    {"url": "https://github.com/sphinx-doc/sphinx/issues/13841",
+     "note": "lang attribute = source language for untranslated text"},
+    {"url": "https://github.com/dask/dask/issues/11447",
+     "note": "visualize ignores engine setting; needs graphviz-free test path"}
+  ]
+}
