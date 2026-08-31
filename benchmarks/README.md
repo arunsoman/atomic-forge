@@ -72,7 +72,7 @@ gate → CIE-generated regression test → repair loop → fork + PR against
 the issue's own upstream repo. Every attempt (pass or fail) is logged to
 `real_issues/sweep/results_round2.jsonl`, resumable.
 
-**17 PRs raised so far, live-checked 2026-08-31: 10 open, 7 closed without merge, 0 merged.**
+**18 PRs raised so far, live-checked 2026-08-31: 11 open, 7 closed without merge, 0 merged.**
 Full methodology and the honest outcome-distribution breakdown (not just
 the raise count) is in [`real_issues/RESULTS.md`](real_issues/RESULTS.md)
 — this table is just the PR list, kept current.
@@ -96,6 +96,7 @@ the raise count) is in [`real_issues/RESULTS.md`](real_issues/RESULTS.md)
 | [dateutil/dateutil](https://github.com/dateutil/dateutil) | [#1448](https://github.com/dateutil/dateutil/issues/1448) | [dateutil#1555](https://github.com/dateutil/dateutil/pull/1555) | `kannamma-labs` | open |
 | [dateutil/dateutil](https://github.com/dateutil/dateutil) | [#1442](https://github.com/dateutil/dateutil/issues/1442) | [dateutil#1556](https://github.com/dateutil/dateutil/pull/1556) | `kannamma-labs` | open |
 | [mahmoud/glom](https://github.com/mahmoud/glom) | [#315](https://github.com/mahmoud/glom/issues/315) | [glom#317](https://github.com/mahmoud/glom/pull/317) | `kannamma-labs` | open |
+| [more-itertools/more-itertools](https://github.com/more-itertools/more-itertools) | [#1240](https://github.com/more-itertools/more-itertools/issues/1240) | [more-itertools#1243](https://github.com/more-itertools/more-itertools/pull/1243) | `kannamma-labs` | open |
 
 (The babel/tenacity PRs were originally opened from a personal fork,
 then migrated to org-owned forks under `kannamma-labs` — same commits,
