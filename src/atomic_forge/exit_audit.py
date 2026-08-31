@@ -32,6 +32,23 @@ EXIT_REASONS = {
     "repro_still_failing",      # F1 second witness: generated test green but probe still fails
     "repair_exhausted",
     "pr_create_failed",
+    # PR-creation failure, classified precisely instead of lumped under
+    # the generic pr_create_failed above (added 2026-08-31, see
+    # RESULTS.md / pr.py's classify_pr_create_error and
+    # llm.py's _is_quota_exhausted — used identically here and in
+    # benchmarks/real_issues/sweep.py's classify() so campaign reporting
+    # and forge's own audit trail never drift apart):
+    "quota_exceeded",       # LLM provider session/plan quota exhausted mid-attempt
+    "pr_locked",             # upstream gates PR creation to collaborators
+    "pr_mechanics_fail",     # ground-truth verified green, but nothing was
+                              # committed to push — see fix.py's forced
+                              # post-verification commit, which should make
+                              # this rare going forward
+    # Preflight checks (added 2026-08-31, see pr.py check_ai_policy /
+    # issue_already_settled) — abort before any LLM spend, not a repair
+    # failure at all:
+    "ai_policy_blocked",     # upstream has a written AI-contributions policy
+    "issue_already_settled", # a maintainer already explained this isn't a bug
 }
 
 

@@ -40,8 +40,10 @@ from .exit_audit import record_exit
 from .issue import (clone_repo, fetch_issue, issue_to_bug_description,
                     make_test_cmd, parse_issue_url, setup_python_env, upstream_slug)
 from .learning import run_postmortem
-from .llm import OpenAICompatLLM
-from .pr import default_branch_for, forge_footer, prepare_pr_branch, raise_pr_via_fork
+from .llm import OpenAICompatLLM, _is_quota_exhausted
+from .pr import (check_ai_policy, classify_pr_create_error, default_branch_for,
+                 forge_footer, issue_already_settled, prepare_pr_branch,
+                 raise_pr_via_fork)
 from .repair_agent import repair_loop_agentic
 from .sandbox import commit as git_commit
 from .testgen import generate_regression_test, oracle_fails_on_buggy
@@ -156,7 +158,8 @@ def run_fix(url: str, llm: OpenAICompatLLM, *,
             samples: int = 2, max_turns_per_attempt: int = 25,
             architect_mode: bool = False,
             skip_bootstrap: bool = False, bootstrap_timeout: int = 600,
-            repro: Optional[Path] = None, test_file: Optional[Path] = None) -> dict:
+            repro: Optional[Path] = None, test_file: Optional[Path] = None,
+            force: bool = False) -> dict:
     """Run the full fix pipeline. Returns a report dict (always; includes
     `success`, `stage`, and either `pr_url` or `reason` on failure). Returns a report dict (always; includes
     `success`, `stage`, and either `pr_url` or `reason` on failure).
@@ -221,7 +224,7 @@ def run_fix(url: str, llm: OpenAICompatLLM, *,
         pr_title=pr_title, work_root=work_root, samples=samples,
         max_turns_per_attempt=max_turns_per_attempt, architect_mode=architect_mode,
         skip_bootstrap=skip_bootstrap, bootstrap_timeout=bootstrap_timeout,
-        repro=repro, test_file=test_file,
+        repro=repro, test_file=test_file, force=force,
     )
 
 
@@ -237,7 +240,8 @@ def run_fix_from_comment(owner: str, repo: str, comment_body: str, file_path: st
                          work_root: Optional[Path] = None,
                          samples: int = 2, max_turns_per_attempt: int = 25,
                          architect_mode: bool = False,
-                         skip_bootstrap: bool = False, bootstrap_timeout: int = 600) -> dict:
+                         skip_bootstrap: bool = False, bootstrap_timeout: int = 600,
+                         force: bool = False) -> dict:
     """Scoped variant of `run_fix` for a code-review-comment-driven fix
     (R8): the bug description comes from a review comment already
     anchored to `file_path` (+ optional `line`) instead of a GitHub issue,
@@ -272,6 +276,7 @@ def run_fix_from_comment(owner: str, repo: str, comment_body: str, file_path: st
         pr_title=pr_title, work_root=work_root, samples=samples,
         max_turns_per_attempt=max_turns_per_attempt, architect_mode=architect_mode,
         skip_bootstrap=skip_bootstrap, bootstrap_timeout=bootstrap_timeout,
+        force=force,
     )
 
 
@@ -285,7 +290,7 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
                       samples: int, max_turns_per_attempt: int, architect_mode: bool,
                       skip_bootstrap: bool = False, bootstrap_timeout: int = 600,
                       repro: Optional[Path] = None,
-                      test_file: Optional[Path] = None) -> dict:
+                      test_file: Optional[Path] = None, force: bool = False) -> dict:
     """Shared body of `run_fix`/`run_fix_from_comment` from "get a runnable
     checkout" onward — everything upstream of this (parsing the intake
     source into an `issue` dict + `bug` description) is the only part
@@ -304,6 +309,53 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
         clone_repo(owner, repo, project_dir)
     project_dir = Path(project_dir)
     _gitignore_artifacts(project_dir)
+
+    # 3a. Preflight policy checks — cheap ground truth before any LLM
+    # spend, same spirit as the F1 repro gate below. Folded in from the
+    # real-issues campaign (2026-08-31, see goal.md / RESULTS.md): both
+    # were previously ONLY enforced by campaign-only scripts
+    # (pr_writable.py / curate.py), so a direct `atomic-forge fix` call —
+    # CLI, the GitHub Action, an MCP caller — had no protection at all.
+    #  - AI-contributions policy: a written-but-API-unenforced policy
+    #    (Rapptz/discord.py#10507: raised, then closed citing exactly
+    #    this) — --force or --dry-run proceeds anyway (dry-run pushes
+    #    nothing, so it's harmless to keep going for local inspection).
+    #  - maintainer-already-settled: an OWNER/MEMBER/COLLABORATOR already
+    #    told the reporter this isn't a bug (dateutil/dateutil#1421: 158
+    #    LLM calls / ~2.9M tokens spent "fixing" confirmed-intended
+    #    behavior) — only meaningful for a real issue number (0 on the
+    #    review-comment-driven path), and not worth running even under
+    #    --dry-run since there's nothing to preview.
+    if not force:
+        policy_hit = check_ai_policy(upstream)
+        if policy_hit and not dry_run:
+            reason = (f"{upstream} {policy_hit['path']} {policy_hit['reason']} — "
+                      "aborting before any LLM spend. Pass --force to proceed anyway "
+                      "(the PR will likely still be rejected/closed on arrival).")
+            print(f"[forge fix] abort: {reason}")
+            record_exit(project_dir, reason="ai_policy_blocked", detail=reason[:500],
+                       extra={"issue": url})
+            return {"url": url, "upstream": upstream, "branch": pr_branch or pr_branch_default,
+                    "test_file": f"tests/test_forge_{test_id}.py", "success": False,
+                    "stage": "preflight", "reason": reason, **result_extra}
+        elif policy_hit:
+            print(f"[forge fix] warning: {upstream} {policy_hit['path']} "
+                  f"{policy_hit['reason']} — continuing anyway (--dry-run, nothing "
+                  "will be pushed).")
+
+        issue_number = issue.get("number") or 0
+        if issue_number:
+            settled_at = issue_already_settled(upstream, issue_number)
+            if settled_at:
+                reason = (f"a maintainer already settled this issue: {settled_at} — "
+                          "aborting before any LLM spend. Pass --force if you believe "
+                          "this doesn't apply (e.g. a stale or superseded comment).")
+                print(f"[forge fix] abort: {reason}")
+                record_exit(project_dir, reason="issue_already_settled", detail=reason[:500],
+                           extra={"issue": url})
+                return {"url": url, "upstream": upstream, "branch": pr_branch or pr_branch_default,
+                        "test_file": f"tests/test_forge_{test_id}.py", "success": False,
+                        "stage": "preflight", "reason": reason, **result_extra}
 
     # 3b. R16 bootstrap gate (see bootstrap.py): a cold clone must prove
     #     "at least one test in this repo is discoverable and executable"
@@ -570,10 +622,29 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
                 print(f"[forge fix] PR opened: {r.get('pr_url')}  (fork -> {upstream}, base {base})")
         except Exception as e:
             result.update(success=False, stage="pr_create", reason=str(e))
-            record_exit(project_dir, reason="pr_create_failed", detail=str(e)[:500],
+            # A validated, ground-truth-green fix failing at the LAST step
+            # is never a repair-quality problem — record WHY precisely,
+            # at the source, instead of leaving every caller to regex
+            # this exception's text after the fact (which is how
+            # quota_exceeded/pr_mechanics_fail went unnoticed under a
+            # generic "pr_create_failed"/"repair_fail" label across the
+            # real-issues campaign — see RESULTS.md and pr.py's
+            # classify_pr_create_error / llm.py's _is_quota_exhausted,
+            # both reused here so the category is identical everywhere).
+            err_kind = classify_pr_create_error(str(e))
+            if _is_quota_exhausted(e):
+                exit_reason = "quota_exceeded"
+            elif err_kind == "lockdown":
+                exit_reason = "pr_locked"
+            elif err_kind == "no_commits":
+                exit_reason = "pr_mechanics_fail"
+            else:
+                exit_reason = "pr_create_failed"
+            record_exit(project_dir, reason=exit_reason, detail=str(e)[:500],
                        extra={"issue": url})
             print(f"[forge fix] abort: PR creation failed after a validated fix ({e}). "
-                  f"The fix itself is real and committed on branch {branch}.")
+                  f"The fix itself is real and committed on branch {branch}. "
+                  f"(exit_reason={exit_reason})")
             return result
         record_exit(project_dir, reason="success",
                    detail=result.get("pr_url") or "dry_run", extra={"issue": url})

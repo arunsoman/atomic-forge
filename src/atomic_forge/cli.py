@@ -98,6 +98,10 @@ def main(argv=None) -> int:
     p.add_argument("--max-turns", type=int, default=10, help="[fix] max test-generation agent turns")
     p.add_argument("--dry-run", action="store_true",
                    help="[fix] do everything except push to the fork / open the PR.")
+    p.add_argument("--force", action="store_true",
+                   help="[fix/fix-comment] skip the preflight AI-contributions-policy "
+                        "and maintainer-already-settled checks and proceed anyway. "
+                        "Off by default: both checks run before any LLM spend.")
     p.add_argument("--repo", default=None,
                    help="[fix-comment] owner/repo (e.g. 'octocat/Hello-World')")
     p.add_argument("--comment-body", default=None,
@@ -225,7 +229,7 @@ def main(argv=None) -> int:
             max_turns=args.max_turns, dry_run=args.dry_run, pr_base=args.pr_base,
             pr_branch=args.pr_branch, pr_title=args.pr_title, samples=args.samples,
             architect_mode=args.architect, skip_bootstrap=args.skip_bootstrap,
-            bootstrap_timeout=args.bootstrap_timeout,
+            bootstrap_timeout=args.bootstrap_timeout, force=args.force,
         )
         # Machine-parseable, in addition to the human-readable prints
         # already inside run_fix_from_comment — entrypoint.sh (the GitHub
@@ -269,7 +273,7 @@ def main(argv=None) -> int:
                     work_root=(Path(args.work_root) if args.work_root else None),
                     architect_mode=args.architect, skip_bootstrap=args.skip_bootstrap,
                     bootstrap_timeout=args.bootstrap_timeout, repro=repro, test_file=test_file,
-                    max_turns_per_attempt=args.max_turns_per_attempt)
+                    max_turns_per_attempt=args.max_turns_per_attempt, force=args.force)
         print(f"[forge] pr-url={r.get('pr_url') or ''}")
         return 0 if r.get("success") else 1
 

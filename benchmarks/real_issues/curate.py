@@ -46,25 +46,18 @@ TARGET_REPOS = {
 # working as intended... Any components missing from the string are taken
 # from the default date") had already settled it, and the reporter agreed.
 # No patch exists here because the reported behavior is correct by design;
-# see benchmarks/real_issues/RESULTS.md. curate_repo() only ever read the
-# issue's own body + a comment *count* — never actual comment content,
-# so this was invisible upstream of the repair loop entirely.
-MAINTAINER_REJECTION = re.compile(
-    r"(working as intended|works as intended|expected behaviou?r|by design|"
-    r"not a bug|won'?t\s*fix|wontfix|as designed|intentional|duplicate of|"
-    r"can'?t reproduce|cannot reproduce|unable to reproduce)", re.I)
-MAINTAINER_ASSOC = {"OWNER", "MEMBER", "COLLABORATOR"}
-
-
-def maintainer_rejected(repo: str, number: int) -> str | None:
-    """None if clear; else the rejecting comment's URL for the audit trail."""
-    data = gh(f"repos/{repo}/issues/{number}/comments")
-    for c in (data if isinstance(data, list) else []):
-        if c.get("author_association") not in MAINTAINER_ASSOC:
-            continue
-        if MAINTAINER_REJECTION.search(c.get("body") or ""):
-            return c.get("html_url", "")
-    return None
+# see benchmarks/real_issues/RESULTS.md.
+#
+# The check itself now lives in atomic_forge.pr.issue_already_settled
+# (2026-08-31) so `atomic-forge fix` gets this protection directly, not
+# only campaigns that happen to route through this curator first — see
+# that function's docstring. Imported here rather than re-implemented so
+# the two can never drift apart again.
+try:
+    from atomic_forge.pr import issue_already_settled as maintainer_rejected
+except ImportError:  # pragma: no cover - only if run outside the venv
+    def maintainer_rejected(repo: str, number: int) -> str | None:
+        return None
 
 
 REPRO_SIGNALS = re.compile(

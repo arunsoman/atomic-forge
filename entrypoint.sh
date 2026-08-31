@@ -15,6 +15,7 @@ set -euo pipefail
 : "${INPUT_REPORT:=jsonl}"
 : "${INPUT_ARCHITECT:=false}"
 : "${INPUT_DRY_RUN:=false}"
+: "${INPUT_FORCE:=false}"
 
 if [ -z "${INPUT_API_KEY:-}" ]; then
   echo "::error::atomic-forge Action: 'api-key' input is required (pass a repo/org secret, e.g. secrets.FORGE_API_KEY)"
@@ -23,6 +24,7 @@ fi
 export FORGE_API_KEY="$INPUT_API_KEY"
 [ -n "${INPUT_BASE_URL:-}" ] && export FORGE_BASE_URL="$INPUT_BASE_URL"
 [ -n "${INPUT_MODEL:-}" ] && export FORGE_MODEL="$INPUT_MODEL"
+[ -n "${INPUT_MODEL_FALLBACKS:-}" ] && export FORGE_MODEL_FALLBACKS="$INPUT_MODEL_FALLBACKS"
 
 # `gh` (required by `fix`/`fix-comment`'s fork-only PR flow, pr.py) picks
 # up GH_TOKEN/GITHUB_TOKEN from the environment automatically — the
@@ -34,6 +36,8 @@ arch_flag=()
 [ "$INPUT_ARCHITECT" = "true" ] && arch_flag+=(--architect)
 dry_run_flag=()
 [ "$INPUT_DRY_RUN" = "true" ] && dry_run_flag+=(--dry-run)
+force_flag=()
+[ "$INPUT_FORCE" = "true" ] && force_flag+=(--force)
 
 case "$INPUT_COMMAND" in
   run)
@@ -45,7 +49,7 @@ case "$INPUT_COMMAND" in
   fix)
     : "${INPUT_ISSUE_URL:?'issue-url' input is required for command: fix}"
     args=(fix "$INPUT_ISSUE_URL" --max-rounds "$INPUT_MAX_ROUNDS" --samples "$INPUT_SAMPLES"
-          "${arch_flag[@]}" "${dry_run_flag[@]}")
+          "${arch_flag[@]}" "${dry_run_flag[@]}" "${force_flag[@]}")
     if [ -n "${INPUT_ISSUE_BODY:-}" ]; then
       # Prefer the body the triggering workflow already has (e.g.
       # ${{ github.event.issue.body }}) over an in-container `gh` fetch —
@@ -62,7 +66,7 @@ case "$INPUT_COMMAND" in
     : "${INPUT_COMMENT_BODY:?'comment-body' input is required for command: fix-comment}"
     args=(fix-comment --repo "$INPUT_REPO" --file "$INPUT_FILE_PATH"
           --comment-body "$INPUT_COMMENT_BODY" --max-rounds "$INPUT_MAX_ROUNDS"
-          --samples "$INPUT_SAMPLES" "${arch_flag[@]}" "${dry_run_flag[@]}")
+          --samples "$INPUT_SAMPLES" "${arch_flag[@]}" "${dry_run_flag[@]}" "${force_flag[@]}")
     [ -n "${INPUT_LINE:-}" ] && args+=(--line "$INPUT_LINE")
     [ -n "${INPUT_SOURCE_URL:-}" ] && args+=(--source-url "$INPUT_SOURCE_URL")
     ;;

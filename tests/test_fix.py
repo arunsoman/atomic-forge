@@ -155,6 +155,12 @@ def _stub_chain(monkeypatch, *, oracle_fails, repair_success, green=True):
     monkeypatch.setattr(F, "setup_python_env", lambda pd, install_cmd=None: "python")
     monkeypatch.setattr(F, "cie_index", lambda pd, db: "indexed")
     monkeypatch.setattr(F, "render_tool_manifest", lambda m: "")
+    # Preflight policy checks (added 2026-08-31, see pr.py) call `gh api`
+    # for real — stub both to "clear" so tests never depend on network/gh
+    # auth, matching the rest of this stub chain's philosophy of not
+    # touching anything outside the process.
+    monkeypatch.setattr(F, "check_ai_policy", lambda upstream: None)
+    monkeypatch.setattr(F, "issue_already_settled", lambda upstream, number: None)
 
     class _Bridge:
         def __init__(self, *a, **k): pass
@@ -243,6 +249,114 @@ def test_run_fix_real_pr_uses_fork_only(monkeypatch, fake_repo):
     assert r["success"] is True
     assert r["pr_url"] == "https://github.com/up/repo/pull/1"
     assert raised["called"] is True and raised["dry_run"] is False  # went through raise_pr_via_fork (fork-only, never origin)
+
+
+@pytest.mark.parametrize("err_text,expected_reason", [
+    ("gh pr create failed: the pushed branch has no commits ahead of "
+     "'main' — nothing to open a PR for. gh said: No commits between "
+     "pylint-dev:main and arunsoman:forge/fix-issue-11361 (createPullRequest)",
+     "pr_mechanics_fail"),
+    ("you (amazing_williams) have reached your session usage limit, "
+     "upgrade for higher limits", "quota_exceeded"),
+    ("gh pr create failed: You don't have the correct permissions to "
+     "execute `CreatePullRequest`", "pr_locked"),
+    ("gh: some other unrecognized failure", "pr_create_failed"),
+])
+def test_run_fix_classifies_pr_creation_failures(monkeypatch, fake_repo, err_text, expected_reason):
+    """A validated, ground-truth-green fix failing at the PR step is
+    classified precisely (added 2026-08-31, see RESULTS.md /
+    pr.py's classify_pr_create_error) instead of one generic
+    pr_create_failed bucket that hid quota exhaustion and git-mechanics
+    failures behind what looked like a forge-quality problem. Also
+    regression coverage for exit_audit.EXIT_REASONS actually containing
+    these — record_exit() raises ValueError on an unregistered reason,
+    and this exact path had no test exercising it before."""
+    import atomic_forge.fix as F
+    from atomic_forge.exit_audit import read_exits
+    _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
+
+    def _raise_pr(pd, *, upstream, title, body, base, dry_run=False):
+        raise RuntimeError(err_text)
+    monkeypatch.setattr(F, "raise_pr_via_fork", _raise_pr)
+
+    ib = fake_repo / "issue.txt"; ib.write_text("add(2,3) should be 5 but returns -1")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=ib, dry_run=False)
+    assert r["success"] is False
+    assert r["stage"] == "pr_create"
+    exits = read_exits(fake_repo)
+    assert exits[-1]["reason"] == expected_reason
+
+
+def test_run_fix_aborts_on_ai_contributions_policy(monkeypatch, fake_repo):
+    """Preflight check added 2026-08-31 (see pr.py, RESULTS.md:
+    Rapptz/discord.py#10507 was raised then closed citing exactly this) —
+    a real, non-dry-run attempt against a repo with a written
+    AI-contributions policy aborts before any LLM spend, not just at the
+    PR-creation step."""
+    import atomic_forge.fix as F
+    raised = _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
+    monkeypatch.setattr(F, "check_ai_policy",
+                        lambda upstream: {"path": "CONTRIBUTING.md",
+                                          "reason": "contains an AI-contributions "
+                                                    "policy clause"})
+    ib = fake_repo / "issue.txt"; ib.write_text("add(2,3) should be 5 but returns -1")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=ib, dry_run=False)
+    assert r["success"] is False
+    assert r["stage"] == "preflight"
+    assert "CONTRIBUTING.md" in r["reason"]
+    assert raised["called"] is False  # never even reached the repair loop
+
+
+def test_run_fix_ai_policy_warns_but_continues_under_dry_run(monkeypatch, fake_repo):
+    """--dry-run pushes nothing regardless, so an AI-contributions policy
+    hit is a warning, not an abort — useful for local inspection."""
+    import atomic_forge.fix as F
+    raised = _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
+    monkeypatch.setattr(F, "check_ai_policy",
+                        lambda upstream: {"path": "CONTRIBUTING.md", "reason": "..."})
+    ib = fake_repo / "issue.txt"; ib.write_text("add(2,3) should be 5 but returns -1")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=ib, dry_run=True)
+    assert r["success"] is True
+    assert r["stage"] == "dry_run"
+
+
+def test_run_fix_aborts_on_maintainer_already_settled(monkeypatch, fake_repo):
+    """dateutil/dateutil#1421 cost 158 LLM calls / ~2.9M tokens "fixing"
+    behavior a maintainer had already confirmed as intended — this
+    preflight check (added 2026-08-31) aborts before any of that spend,
+    for both dry-run and real attempts (there's nothing useful to preview
+    for a settled non-bug either way)."""
+    import atomic_forge.fix as F
+    raised = _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
+    monkeypatch.setattr(F, "issue_already_settled",
+                        lambda upstream, number:
+                        "https://github.com/o/r/issues/1#issuecomment-1")
+    ib = fake_repo / "issue.txt"; ib.write_text("add(2,3) should be 5 but returns -1")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=ib, dry_run=True)
+    assert r["success"] is False
+    assert r["stage"] == "preflight"
+    assert "issuecomment-1" in r["reason"]
+    assert raised["called"] is False
+
+
+def test_run_fix_force_skips_both_preflight_checks(monkeypatch, fake_repo):
+    """--force is the escape hatch for both checks at once — proceeds
+    through the full pipeline even when both would otherwise abort."""
+    import atomic_forge.fix as F
+    raised = _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
+    monkeypatch.setattr(F, "check_ai_policy",
+                        lambda upstream: {"path": "CONTRIBUTING.md", "reason": "..."})
+    monkeypatch.setattr(F, "issue_already_settled",
+                        lambda upstream, number: "https://example/settled")
+    ib = fake_repo / "issue.txt"; ib.write_text("add(2,3) should be 5 but returns -1")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=ib, dry_run=False, force=True)
+    assert r["success"] is True
+    assert raised["called"] is True
 
 
 def test_run_fix_issue_body_from_stdin(monkeypatch, fake_repo):

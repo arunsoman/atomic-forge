@@ -59,6 +59,14 @@ inputs:
     description: "['fix'/'fix-comment'] do everything except push/open the PR ('true'/'false')"
     required: false
     default: "false"
+  force:
+    description: >
+      ['fix'/'fix-comment'] skip the preflight AI-contributions-policy and
+      maintainer-already-settled checks and proceed anyway ('true'/'false').
+      Off by default: both run before any LLM spend and abort early —
+      see the pr.py check_ai_policy / issue_already_settled docstrings.
+    required: false
+    default: "false"
   architect:
     description: "opt-in planner pass before each repair round (see req-planner-executor-split.md). 'true'/'false'"
     required: false
@@ -82,6 +90,16 @@ inputs:
     default: ""
   model:
     description: "Model name (FORGE_MODEL)."
+    required: false
+    default: ""
+  model-fallbacks:
+    description: >
+      Comma-separated models to switch to, in order, the moment the
+      primary model reports a session/plan quota exhaustion
+      (FORGE_MODEL_FALLBACKS) — a hard cap, not a transient rate limit;
+      see llm.py's _is_quota_exhausted. Omit for no fallback (the
+      previous, only behavior: the whole attempt fails on quota
+      exhaustion).
     required: false
     default: ""
   test-cmd:
