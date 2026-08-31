@@ -134,14 +134,24 @@ def generate_regression_test(llm: OpenAICompatLLM, bridge, project_dir: Path,
         # Confirmed live (rca_pilot_runs_1_3.md F4, sphinx#13180): raising
         # max_tokens alone does NOT fix this — the model isn't token-starved,
         # it just keeps exploring (search_symbol/file_skeleton/view_file)
-        # right up to the turn budget without ever attempting write_file. With
-        # 2 turns left, force the issue: write now with what's already been
-        # learned, or the attempt fails outright with nothing generated.
-        if turns == max_turns - 1 and not wrote_file:
+        # right up to the turn budget without ever attempting write_file.
+        #
+        # A single reminder at 2 turns left is NOT reliable enough — found
+        # live 2026-08-31 (simonw/datasette#2805, simple-salesforce#758):
+        # both got the "stop exploring, write_file NOW" message at turns-1
+        # and both called view_file again anyway, right through it, on
+        # BOTH of their last 2 turns. One warning a model can ignore isn't
+        # a safeguard; escalate it across the whole remaining tail instead
+        # of firing once and hoping.
+        remaining = max_turns - turns + 1
+        if remaining <= 3 and not wrote_file:
+            urgency = ("THIS IS THE LAST TURN. " if remaining == 1 else "")
             messages.append({"role": "user", "content":
-                f"{max_turns - turns + 1} turn(s) remain. Stop exploring — call "
+                f"{urgency}{remaining} turn(s) remain. Stop exploring — call "
                 "write_file NOW with the regression test, using what you've already "
-                "learned about the code. If write_file is not called this turn, no "
+                "learned about the code. Do not call view_file, search_symbol, "
+                "file_skeleton, callers, or run_tests again — only write_file is "
+                "useful from here. If write_file is not called this turn, no "
                 "test will be generated and this entire attempt fails."})
         # max_tokens must clear a reasoning model's thinking head (qwen3.5 et
         # al. burn thousands of tokens on <think> before emitting content or
