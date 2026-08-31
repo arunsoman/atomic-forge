@@ -100,8 +100,22 @@ def run_postmortem(llm, project_dir, traj_path, *, bug_description: str,
         raw = llm.chat(messages, temperature=0.3, max_tokens=1500)
         analysis = _parse_analysis(raw)
     except Exception as e:
+        # `new_tool_would_help: false` here used to read as a confident
+        # conclusion ("the postmortem looked and found nothing") when it
+        # actually meant the postmortem itself never ran — found live
+        # (2026-08-31): both occurrences so far (simonw/sqlite-utils#841,
+        # pypa/pip#14269) followed a 150+-call, 2M+-token repair session
+        # in the same process, and llm.chat() returned successfully with
+        # EMPTY content rather than raising — a 200 response with nothing
+        # in it doesn't trip _is_quota_exhausted (there's no exception
+        # text to match), so this may be the same session-quota pressure
+        # wearing a different disguise. Not proven, so not chasing the
+        # exact mechanism further here; instead making the record itself
+        # honest either way — None (unknown), never False (a specific,
+        # unearned claim), when there was no real analysis to base it on.
         analysis = {"paths_tried": [], "untried_paths": [],
-                    "new_tool_would_help": False, "proposed_tool": None,
+                    "new_tool_would_help": None, "proposed_tool": None,
+                    "postmortem_failed": True,
                     "parse_error": str(e), "raw": raw[:2000]}
 
     record = {"exit_reason": exit_reason, **analysis}

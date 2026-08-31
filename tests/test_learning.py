@@ -72,12 +72,31 @@ def test_run_postmortem_never_raises_on_malformed_reply(tmp_path):
 
 
 def test_run_postmortem_never_raises_when_llm_call_itself_fails(tmp_path):
+    """`new_tool_would_help` must be None here, not False — found live
+    (2026-08-31, simonw/sqlite-utils#841 and pypa/pip#14269): False used
+    to read as a confident "the postmortem looked and found nothing"
+    when what actually happened is the postmortem never ran at all.
+    False is a specific, unearned claim when there was no real analysis
+    to base it on; None (unknown) is honest either way."""
     traj = _write_trajectory(tmp_path, [{"event": "test_run", "round": 0, "ok": False}])
     class _Boom:
         def chat(self, *a, **kw): raise RuntimeError("rate limited")
     rec = run_postmortem(_Boom(), tmp_path, traj, bug_description="x")
-    assert rec["new_tool_would_help"] is False
+    assert rec["new_tool_would_help"] is None
+    assert rec["postmortem_failed"] is True
     assert "parse_error" in rec
+
+
+def test_run_postmortem_empty_llm_reply_is_flagged_not_silently_false(tmp_path):
+    """The other real failure shape seen live: llm.chat() returns
+    successfully with EMPTY content (no exception at all) rather than
+    raising - _parse_analysis("") then fails to json.loads(), landing in
+    the same except branch. Must be flagged the same way as an outright
+    LLM-call exception, not treated as a valid empty analysis."""
+    traj = _write_trajectory(tmp_path, [{"event": "test_run", "round": 0, "ok": False}])
+    rec = run_postmortem(_FakeLLM(""), tmp_path, traj, bug_description="x")
+    assert rec["new_tool_would_help"] is None
+    assert rec["postmortem_failed"] is True
 
 
 def test_run_postmortem_handles_missing_trajectory(tmp_path):
