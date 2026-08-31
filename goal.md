@@ -63,6 +63,18 @@ was not reflected anywhere in the wiki). Reconciled into
    count: ~32% oracle_reject, ~32% repair_fail, ~22% infra_fail, ~12%
    pr_raised. infra/bootstrap failure is the single largest bucket — a
    bigger lever right now than repair-loop tuning.
+   **Superseded 2026-08-31 (later same day):** this undercounted —
+   `results_round4.jsonl` (26 more attempts, run later that day) wasn't
+   folded in before this was written, and drifted from
+   `benchmarks/README.md`'s PR table as a result. Re-reconciled via the
+   new `benchmarks/real_issues/reconcile.py` (reads every round's ledger,
+   dedupes retried issues, live-checks PR status): **120 tracked
+   attempts, 18 PRs raised, 0 merged** (11 open, 7 closed). See
+   `RESULTS.md`. Also changed as of this date: `RESULTS.md` and the wiki
+   now report PR outcomes only (raised/open/closed/merged), not the
+   internal outcome-distribution breakdown — a deliberate reporting-scope
+   narrowing, not a correction; the full breakdown is still logged in
+   `sweep/results_round*.jsonl` for anyone auditing the harness.
 2. ✅ Write-up done (`RESULTS.md`) — methodology per stream, live PR
    status (checked via `gh`, not stale log claims), the honest headline
    ("0 merged" is the number to lead with, not "12 raised").
@@ -77,13 +89,22 @@ was not reflected anywhere in the wiki). Reconciled into
    written-but-unenforced policy. Added `check_ai_policy()` to
    `pr_writable.py` — verified it flags discord.py and doesn't
    false-positive on black/trio.
-5. **Not yet done, genuinely still open**: 0 of the 12 raised PRs are
+5. **Not yet done, genuinely still open**: 0 of the 18 raised PRs are
    merged. This document needs revisiting once reviews land either way —
    don't publish "raised" as if it were "succeeded."
-6. Only after merged results exist (or a clear rejection pattern is
-   understood): SWE-bench Verified harness, baselines (aider, agent
-   modes), ablations (graph, blast-radius gate, K) — these were already
-   correctly scoped as later milestones.
+6. **Priority changed 2026-08-31**: the earlier "only after merged
+   results exist" gate on SWE-bench/baselines/ablations is lifted —
+   starting the SWE-bench Verified harness now rather than waiting on
+   upstream review outcomes we don't control the timeline of. See revised
+   priority order below.
+7. Checked for PRs "left unaccounted for" — attempts where a patch
+   verified green but no PR was ever opened due to our own pipeline gap
+   (the class `fix.py`'s post-green force-commit fix, item 3 in the
+   session addendum below, was written to close). Found exactly one
+   near-miss across all rounds: `Textualize/rich#4208`, marked
+   `pr_locked` — not a pipeline gap, but rich's own repo settings gating
+   PR creation to collaborators (same category as the discord.py
+   AI-policy exclusion). Correctly not pushable; nothing else queued.
 
 ## Phase 2 — GitHub Action as primary distribution surface
 
@@ -124,9 +145,10 @@ was not reflected anywhere in the wiki). Reconciled into
 
 | When | Focus |
 |---|---|
-| Now (parallel) | PyPI publish + tag-reference fix (Track A) **and** finish/write up campaign50 astroid results (Track B) |
-| Next | Marketplace listing + demo repo (now backed by real numbers) |
-| Then | SWE-bench harness, baselines, ablations, cost-per-fix |
+| Now | **SWE-bench Verified harness** — start small (10–15 issues), adapt `atomic-forge fix`/`repair` to SWE-bench's Docker eval images rather than building new infra. No longer gated on merged-PR outcomes (changed 2026-08-31). |
+| Also now (parallel, mechanical) | PyPI publish + tag-reference fix (Track A) |
+| Next | Cost-per-fix backfill (parse the `llm_calls`/token counts already logged per attempt), then ablations (graph, blast-radius gate, K) on the existing `cases/` runner — no new harness needed |
+| Then | Baselines (aider, agent modes, pure generate-then-test), marketplace listing + demo repo |
 | Then | MCP exposure + public announcement (numbers-first, BSL FAQ ready) |
 
 ## Session addendum (2026-08-31): learnings folded back into forge

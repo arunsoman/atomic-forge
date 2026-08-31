@@ -50,7 +50,7 @@ atomic-forge run --tasks tasks.json --project-dir ./out
 | Real open-source bugs (CIE + forge) | **4/4 fixed**, 1 round each, matching the merged PR | real regression tests from [more-itertools](https://github.com/more-itertools/more) & [boltons](https://github.com/mahmoud/boltons) |
 | Regression tests generated from the issue text alone | **4/4 valid** (fail on buggy, pass on real fix) | same benchmark, second half |
 | Code-graph (CIE) token cost | **~63% fewer tokens**, without the graph the agent didn't converge | planted subtle bug, same agent, A/B |
-| Live GitHub issue campaign | **55 real issues attempted, 3 real PRs opened** against upstream (2 open, 1 closed by maintainer unmerged) | end-to-end `fix <issue-url> --raise-pr`, no cherry-picking — see [PR log](benchmarks/README.md#real-issue-pr-campaign) |
+| Live GitHub issue campaign | **18 real PRs opened** against upstream across ~20 repos (11 open, 7 closed unmerged, 0 merged so far) | end-to-end `fix <issue-url> --raise-pr`, no cherry-picking — see [reconciled results](benchmarks/real_issues/RESULTS.md), regenerable with `benchmarks/real_issues/reconcile.py` |
 
 Harness + seeds: [`benchmarks/`](benchmarks/) — methodology in the [wiki's Benchmarks page](https://github.com/kannamma-labs/atomic-forge/wiki/Benchmarks). Forks and PRs from the live campaign are raised and maintained under the [`kannamma-labs`](https://github.com/kannamma-labs) account, not a personal one.
 

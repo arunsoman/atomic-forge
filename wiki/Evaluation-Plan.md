@@ -50,11 +50,11 @@ against strong baselines. The bar in 2026:
 |---|---|
 | Real-issues harness (real merged bugs, live LLM, execution scoring) | live, 4/4 ([[Benchmarks]]) |
 | Regression-test generation from issue text, oracle-validated | live, 4/4 ([[Issue-to-PR]] testgen half) |
-| Real-issues campaign, consolidated (campaign50 + sweep round2/3) | **in progress** — see `benchmarks/real_issues/RESULTS.md`, the reconciled tally across all three streams. **103 tracked attempts across ~20 repos, 12 PRs raised, 0 merged** (10 open, 2 closed without merge). infra/bootstrap failure is the single largest failure bucket (~22%) — bigger lever right now than repair-loop tuning |
-| SWE-bench Verified harness | **planned** — next milestone |
-| 40–60-issue custom Real-Issues set (scaling from 4) | **exceeded on attempt count** (103+, see row above) — outcome distribution (not just raise count) is what should be reported: ~32% oracle_reject, ~32% repair_fail, ~22% infra_fail, ~12% pr_raised |
-| Baseline runs (aider / agent modes / pure generate-then-test) | **planned** |
-| Ablations (graph, blast-radius gate, K) | **planned** |
+| Real-issues campaign, consolidated (round1 pilot → round4 + campaign50) | **in progress** — see `benchmarks/real_issues/RESULTS.md`, regenerable with `benchmarks/real_issues/reconcile.py`. **120 tracked attempts across ~20 repos, 18 PRs raised, 0 merged** (11 open, 7 closed without merge). As of 2026-08-31 this file reports PR outcomes only (raised/open/closed/merged), not the internal outcome-distribution breakdown — see RESULTS.md's reporting-policy note |
+| SWE-bench Verified harness | **next milestone** — see `goal.md`'s revised priority order |
+| 40–60-issue custom Real-Issues set (scaling from 4) | **exceeded on attempt count** (120, see row above) |
+| Baseline runs (aider / agent modes / pure generate-then-test) | **planned**, after SWE-bench harness — see `goal.md` |
+| Ablations (graph, blast-radius gate, K) | **planned**, after SWE-bench harness — see `goal.md` |
 | Cost-per-successful-fix reporting | **partially live** — only one issue (astroid#769) has full token/wall-clock accounting; the sweep runner logs `seconds`/`model` per attempt but not full token counts yet — backfill needed before an aggregate $/fix number is credible |
 
 Nothing on the ✅ lines is claimed beyond what the harness actually ran.
