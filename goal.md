@@ -128,3 +128,30 @@ was not reflected anywhere in the wiki). Reconciled into
 | Next | Marketplace listing + demo repo (now backed by real numbers) |
 | Then | SWE-bench harness, baselines, ablations, cost-per-fix |
 | Then | MCP exposure + public announcement (numbers-first, BSL FAQ ready) |
+
+## Session addendum (2026-08-31): learnings folded back into forge
+
+Manual failure-analysis during round4 turned into 5 permanent pipeline
+fixes rather than one-off patches, so future campaign runs stop
+rediscovering the same things by burning tokens:
+
+1. `pr_writable.py` — `check_ai_policy()`: grep CONTRIBUTING/PR-template
+   docs for a written AI-contributions policy before spending a fix
+   attempt (caught discord.py, xarray, sympy).
+2. `curate.py` — `maintainer_rejected()`: skip issues an OWNER/MEMBER/
+   COLLABORATOR already settled in-thread ("working as intended", etc.) —
+   found live on dateutil#1421, which cost 158 LLM calls / ~2.9M tokens
+   for a non-bug.
+3. `fix.py` — force a commit right after ground-truth-green is confirmed,
+   closing the "verified green but never committed" failure that killed
+   pylint-dev/pylint#11361's otherwise-correct fix at the PR step.
+4. `llm.py` — `FORGE_MODEL_FALLBACKS`: switch models immediately on a
+   quota-exhaustion error instead of burning 4 useless backoff retries
+   against the same capped model (13/34 sampled failures were this).
+5. `sweep.py` — `classify()` now reports `quota_exceeded` and
+   `pr_mechanics_fail` as their own categories instead of both silently
+   defaulting into `repair_fail`.
+
+All 5 covered by tests (359/359 passing). Commits: `319ccee` (pr_writable
+was earlier, `5d1e82d` fix.py, `319ccee` curate.py, `89e8c19` llm.py,
+`ef4231a` sweep.py).
