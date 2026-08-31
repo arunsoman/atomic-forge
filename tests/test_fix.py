@@ -288,6 +288,71 @@ def test_run_fix_classifies_pr_creation_failures(monkeypatch, fake_repo, err_tex
     assert exits[-1]["reason"] == expected_reason
 
 
+def test_pr_body_embeds_the_actual_test_content():
+    """A bare `test_rel` reference forces a reviewer to leave the PR
+    description and dig through "Files changed" to see what's actually
+    being asserted (user feedback, 2026-08-31: "the reference enough its
+    not good enough") — the test source itself should be visible inline."""
+    import atomic_forge.fix as F
+    issue = {"owner": "o", "repo": "r", "number": 1, "url": "https://x/1",
+             "title": "bug", "body": "desc"}
+    report = {"rounds": 1, "initial_failures": 1, "final_failures": 0,
+              "repaired_files": ["mod.py"]}
+    body = F._pr_body(issue, report, "tests/test_forge_1.py",
+                      "def test_add():\n    assert add(2, 3) == 5\n")
+    assert "def test_add():" in body
+    assert "assert add(2, 3) == 5" in body
+    assert "```python" in body       # .py suffix -> python fence
+    assert "<summary>" in body       # collapsed, doesn't dominate the description
+
+
+def test_pr_body_truncates_a_very_large_test_and_says_so():
+    import atomic_forge.fix as F
+    issue = {"owner": "o", "repo": "r", "number": 1, "url": "https://x/1",
+             "title": "bug", "body": "desc"}
+    report = {"rounds": 1, "initial_failures": 1, "final_failures": 0, "repaired_files": []}
+    huge = "x = 1\n" * 2000  # well over the 4000-char cap
+    body = F._pr_body(issue, report, "tests/test_forge_1.py", huge)
+    assert "truncated" in body.lower()
+    assert len(body) < len(huge)  # didn't just dump the whole thing in
+
+
+def test_pr_body_falls_back_to_reference_only_without_content():
+    """No test_content (e.g. the file couldn't be read) -> no crash, no
+    empty <details> block, just the existing reference line."""
+    import atomic_forge.fix as F
+    issue = {"owner": "o", "repo": "r", "number": 1, "url": "https://x/1",
+             "title": "bug", "body": "desc"}
+    report = {"rounds": 1, "initial_failures": 1, "final_failures": 0, "repaired_files": []}
+    body = F._pr_body(issue, report, "tests/test_forge_1.py")
+    assert "<details>" not in body
+    assert "tests/test_forge_1.py" in body  # reference line still present
+
+
+def test_run_fix_pr_body_includes_the_real_committed_test_file(monkeypatch, fake_repo):
+    """End-to-end: the test file _stub_chain's fake generate_regression_test
+    "wrote" (fix.py doesn't actually write it in this stubbed path — write
+    it directly here, at the path run_fix will read from) ends up embedded
+    in the body raise_pr_via_fork actually receives."""
+    import atomic_forge.fix as F
+    raised = _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
+    captured = {}
+    def _raise_pr(pd, *, upstream, title, body, base, dry_run=False):
+        captured["body"] = body
+        raised["called"] = True
+        return {"pr_url": "https://github.com/up/repo/pull/1", "branch": "b", "base": base}
+    monkeypatch.setattr(F, "raise_pr_via_fork", _raise_pr)
+
+    ib = fake_repo / "issue.txt"; ib.write_text("add(2,3) should be 5 but returns -1")
+    tests_dir = fake_repo / "tests"; tests_dir.mkdir()
+    (tests_dir / "test_forge_1.py").write_text(
+        "def test_add_returns_five():\n    assert add(2, 3) == 5\n")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=ib, dry_run=False)
+    assert r["success"] is True
+    assert "def test_add_returns_five():" in captured["body"]
+
+
 def test_run_fix_aborts_on_ai_contributions_policy(monkeypatch, fake_repo):
     """Preflight check added 2026-08-31 (see pr.py, RESULTS.md:
     Rapptz/discord.py#10507 was raised then closed citing exactly this) —

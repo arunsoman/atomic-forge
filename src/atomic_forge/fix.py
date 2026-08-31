@@ -83,9 +83,38 @@ def _pr_title(issue: dict, override: Optional[str]) -> str:
     return f"fix(issue #{issue['number']}): {title}"
 
 
-def _pr_body(issue: dict, report: dict, test_rel: str) -> str:
+_LANG_BY_SUFFIX = {".py": "python", ".js": "javascript", ".jsx": "javascript",
+                   ".ts": "typescript", ".tsx": "typescript", ".go": "go",
+                   ".rs": "rust", ".java": "java", ".cpp": "cpp", ".c": "c"}
+
+
+def _pr_body(issue: dict, report: dict, test_rel: str, test_content: str = "") -> str:
+    """`test_content`: the generated regression test's actual source, read
+    off the branch right before the PR is opened. A bare `` `test_rel` ``
+    reference forces a reviewer to leave the PR description and dig
+    through "Files changed" to see what's actually being asserted —
+    embedding it inline (collapsed, so it doesn't dominate the
+    description for a short fix) means the single most important piece
+    of evidence for trusting an autonomous PR is visible without leaving
+    the page. Empty is fine (falls back to the reference-only line) —
+    keeps this callable before the test file exists, e.g. by future
+    dry-run tooling."""
     repo_bit = f"{issue['owner']}/{issue['repo']}" + (f"#{issue['number']}" if issue.get("number") else "")
     source_label = "Review comment" if not issue.get("number") else "Issue"
+    test_block = ""
+    if test_content:
+        lang = _LANG_BY_SUFFIX.get(Path(test_rel).suffix.lower(), "")
+        shown = test_content
+        truncated_note = ""
+        if len(test_content) > 4000:
+            shown = test_content[:4000]
+            truncated_note = (
+                "\n\n*(truncated — see the full file in this PR's \"Files changed\" tab)*")
+        test_block = (
+            f"\n<details>\n<summary>Regression test (<code>{test_rel}</code>) — "
+            f"click to expand</summary>\n\n```{lang}\n{shown}\n```"
+            f"{truncated_note}\n\n</details>\n"
+        )
     return (
         f"Fixes {issue.get('url') or repo_bit}\n\n"
         "## What\n"
@@ -100,6 +129,7 @@ def _pr_body(issue: dict, report: dict, test_rel: str) -> str:
         f"- repair rounds: {report.get('rounds')}  "
         f"failures: {report.get('initial_failures')} -> {report.get('final_failures')}\n"
         f"- repaired file(s): {', '.join(report.get('repaired_files', [])) or 'n/a'}\n"
+        + test_block
         + forge_footer()
     )
 
@@ -149,7 +179,7 @@ def run_repro_probe(project_dir: Path, venv_py: str, repro: Path,
 def run_fix(url: str, llm: OpenAICompatLLM, *,
             project_dir: Optional[Path] = None,
             install_cmd: Optional[str] = None,
-            max_rounds: int = 5, max_turns: int = 10,
+            max_rounds: int = 5, max_turns: int = 18,
             dry_run: bool = False,
             pr_base: Optional[str] = None, pr_branch: Optional[str] = None,
             pr_title: Optional[str] = None,
@@ -233,7 +263,7 @@ def run_fix_from_comment(owner: str, repo: str, comment_body: str, file_path: st
                          line: Optional[int] = None, source_url: Optional[str] = None,
                          project_dir: Optional[Path] = None,
                          install_cmd: Optional[str] = None,
-                         max_rounds: int = 5, max_turns: int = 10,
+                         max_rounds: int = 5, max_turns: int = 18,
                          dry_run: bool = False,
                          pr_base: Optional[str] = None, pr_branch: Optional[str] = None,
                          pr_title: Optional[str] = None,
@@ -605,7 +635,11 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
 
         # 7. fork-only PR (never push to origin)
         title = _pr_title(issue, pr_title)
-        body = _pr_body(issue, result["repair"], test_rel)
+        try:
+            test_content = (project_dir / test_rel).read_text(errors="replace")
+        except OSError:
+            test_content = ""  # operator-supplied --test-file path oddities, etc. — never fatal
+        body = _pr_body(issue, result["repair"], test_rel, test_content)
         base = pr_base or default_branch_for(upstream, project_dir=project_dir)
         try:
             if dry_run:

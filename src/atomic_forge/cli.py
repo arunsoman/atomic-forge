@@ -95,7 +95,12 @@ def main(argv=None) -> int:
     p.add_argument("--install-cmd", default=None,
                    help="[fix] override the project install command (e.g. 'pip install -e .'); "
                         "pass an empty string to skip installing the project entirely.")
-    p.add_argument("--max-turns", type=int, default=10, help="[fix] max test-generation agent turns")
+    p.add_argument("--max-turns", type=int, default=18,
+                   help="[fix] max test-generation agent turns (default: 18, raised from 10 "
+                        "2026-08-31 — the real-issues campaign found testgen hitting turn 10 "
+                        "as a hard ceiling on every one of its non-framework-mismatch failures "
+                        "(pylint-dev/pylint#11092, robotframework/robotframework#5646), mid "
+                        "genuine exploration, not stuck; see RESULTS.md)")
     p.add_argument("--dry-run", action="store_true",
                    help="[fix] do everything except push to the fork / open the PR.")
     p.add_argument("--force", action="store_true",
