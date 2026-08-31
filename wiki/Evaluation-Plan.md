@@ -50,13 +50,18 @@ against strong baselines. The bar in 2026:
 |---|---|
 | Real-issues harness (real merged bugs, live LLM, execution scoring) | live, 4/4 ([[Benchmarks]]) |
 | Regression-test generation from issue text, oracle-validated | live, 4/4 ([[Issue-to-PR]] testgen half) |
+| campaign50 real-issues campaign (18 repos, `fix --raise-pr`) | **in progress** — see `benchmarks/real_issues/campaign_log.md`. 4 PRs raised on pylint-dev/astroid (#3199, #3259, #3258, #3257 — fuzzer-found crashes), each independently re-verified against the repo's own suite after patching; PR merge status not yet tracked here. One fully-instrumented ledger run recorded so far (astroid#769: `repair_exhausted` after 5 rounds — a real failure case, kept for the failure-analysis writeup, not hidden) |
 | SWE-bench Verified harness | **planned** — next milestone |
-| 40–60-issue custom Real-Issues set (scaling from 4) | **planned** |
+| 40–60-issue custom Real-Issues set (scaling from 4) | **in progress**, scaled beyond target to 18 repos via campaign50 — see row above |
 | Baseline runs (aider / agent modes / pure generate-then-test) | **planned** |
 | Ablations (graph, blast-radius gate, K) | **planned** |
-| Cost-per-successful-fix reporting | **planned** (token accounting already recorded in trajectories) |
+| Cost-per-successful-fix reporting | **partially live** — the one fully-logged campaign50 run already carries full token/wall-clock accounting (`campaign50.ledger.jsonl`); needs the rest of the campaign logged the same way before it's reportable in aggregate |
 
 Nothing on the ✅ lines is claimed beyond what the harness actually ran.
 This page exists so the gap between "measured" and "designed" stays
 visible — [[Benchmarks]] for what's measured today, [[Design-Notes]] for
-the why behind the designs.
+the why behind the designs. The campaign50 row above is deliberately not
+✅ yet: 4 raised PRs are a strong early signal, not a published, reconciled
+result set — see `goal.md` (Track B) in the main repo for what
+"publishable" means here (ledger and narrative log reconciled,
+methodology written up, honest inclusion of the failure case).

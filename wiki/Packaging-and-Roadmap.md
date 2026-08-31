@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: kannamma-labs/atomic-forge@v0.1.0
+      - uses: kannamma-labs/atomic-forge@v0.2.0
         id: forge
         with:
           command: fix
@@ -71,7 +71,7 @@ jobs:
         issue: ${{ fromJSON(needs.pick.outputs.issues) }}
     steps:
       - uses: actions/checkout@v4
-      - uses: kannamma-labs/atomic-forge@v0.1.0
+      - uses: kannamma-labs/atomic-forge@v0.2.0
         id: forge
         with:
           command: fix

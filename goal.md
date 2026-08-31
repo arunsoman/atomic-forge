@@ -25,21 +25,29 @@ way there already.
 1. **Publish to PyPI.** `publish-pypi.yml` exists but nothing is live —
    `pip install atomic-forge` currently 404s. Set `PYPI_API_KEY` (or wire
    trusted publishing) and cut the release.
-2. **Fix the stale tag references.** Tags `v0.1.0`/`v0.1.1`/`v0.2.0`
-   already exist — no new tag needed. But the example workflows in
-   `wiki/Packaging-and-Roadmap.md` still pin `uses: kannamma-labs/atomic-forge@v0.1.0`.
-   Bump to `@v0.2.0` (README too, if it references a version).
+2. ✅ **Fix the stale tag references.** Tags `v0.1.0`/`v0.1.1`/`v0.2.0`
+   already exist — no new tag needed. Bumped the stale
+   `@v0.1.0` refs to `@v0.2.0` in `wiki/Packaging-and-Roadmap.md` and
+   `wiki/GitHub-Action.md` (found two extra ones there beyond the original
+   scope).
 3. **One-command first contact.** `atomic-forge fix <issue-url> --dry-run`
    as the front door; preflight errors name exactly what's missing
    (API key, GH token).
 4. **Demo repo** with the Action pre-wired on a couple of known-good
    issues — but sequence this *after* Track B has something to point the
    demo at, not before.
-5. **License messaging.** `license = "BSL-1.1"` (Other/Proprietary
-   classifier), not MIT/Apache. That's real friction for the exact
-   audiences the announcement phase targets (HN, r/MachineLearning) —
-   write a one-line "why BSL, not MIT" FAQ entry before posting there, so
-   the first comment thread isn't about licensing instead of results.
+5. ✅ **License messaging — and a real gap it surfaced.** `LICENSE`'s
+   `Additional Use Grant` was `None`, meaning the license as written did
+   not actually grant free production use — running forge in CI against a
+   real repo is production use, and that would have required a commercial
+   license from day one, directly undercutting the whole "pip install and
+   drop it into your repo" push. Added an Additional Use Grant permitting
+   free production use (own/client codebases, CI, the Action); a
+   commercial license is now needed only to resell forge itself as a
+   hosted service or embed it in a competing offering. README got a
+   matching "why BSL not MIT" FAQ line. **This LICENSE edit needs your
+   explicit sign-off before it's committed** — it's a real legal document,
+   not just docs copy.
 
 ## Track B — publish the campaign that's already running
 
@@ -57,8 +65,12 @@ That's a stronger opening story than a demo repo.
 2. Write it up: methodology, per-case outcome, the engineering findings
    above (they're good marketing on their own — real bugs found in your
    own fault-localization and patch pipeline, fixed, regression-tested).
-3. Update `Evaluation-Plan.md`'s ledger table to reflect actual status
-   (astroid results live, not planned) before it goes out publicly stale.
+3. ✅ Updated `Evaluation-Plan.md`'s ledger table to reflect actual status
+   (astroid PRs raised + independently re-verified, not "planned"; the
+   40–60-issue target already scaled to 18 repos via campaign50; the one
+   fully-logged ledger run — astroid#769, a real failure case — kept
+   visible rather than hidden). Full write-up with reconciled ledger still
+   needed before this is a publishable result, not just a status update.
 4. Only after this exists: SWE-bench Verified harness, baselines (aider,
    agent modes), ablations (graph, blast-radius gate, K) — these were
    already correctly scoped as later milestones.
