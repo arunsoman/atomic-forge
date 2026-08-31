@@ -43,6 +43,7 @@ from .learning import run_postmortem
 from .llm import OpenAICompatLLM
 from .pr import default_branch_for, forge_footer, prepare_pr_branch, raise_pr_via_fork
 from .repair_agent import repair_loop_agentic
+from .sandbox import commit as git_commit
 from .testgen import generate_regression_test, oracle_fails_on_buggy
 from .trajectory import Trajectory
 
@@ -489,6 +490,25 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
         # ground-truth re-check of the generated test (don't trust self-report)
         green = _ground_truth_green(project_dir, test_cmd)
         result["ground_truth_green"] = green
+        if green:
+            # Real failure mode found live on pylint-dev/pylint#11361 and
+            # arrow-py/arrow#1341 (round3 sweep, 2026-08-31): the working
+            # tree can be genuinely green here while carrying an uncommitted
+            # edit — repair_loop_agentic's own round-by-round commit() calls
+            # only fire when a round selects a winning candidate through the
+            # normal PATCH/SUBMIT/score flow, but ground-truth green is
+            # re-verified independently of that self-report (deliberately —
+            # see the comment above on the rounds==0 check) and can end up
+            # true from a candidate edit that never went through that path.
+            # The failure then surfaces 10-40 minutes later, at PR time, as
+            # an opaque "gh pr create failed: no commits ahead of base" —
+            # for a fix that was real and correctly verified right here.
+            # Force a commit at the one point we've just proven the tree is
+            # actually green, so "verified green" and "committed" can never
+            # diverge again — idempotent (a no-op tree just gets an empty
+            # commit) and cheap next to the LLM cost already spent to get
+            # here.
+            git_commit(project_dir, "forge: verified green (ground-truth re-check)")
         if not green:
             result.update(stage="repair", reason="repair did not make the generated test pass")
             record_exit(project_dir, reason="repair_exhausted",
