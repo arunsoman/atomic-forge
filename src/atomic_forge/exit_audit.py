@@ -32,6 +32,18 @@ EXIT_REASONS = {
     "repro_still_failing",      # F1 second witness: generated test green but probe still fails
     "repair_exhausted",
     "pr_create_failed",
+    # An LLM call exhausted its retries against what looks like a quota/
+    # rate-limit condition (HTTP 429, "rate limit", "session usage limit"
+    # — see llm.py's LLMQuotaError), not a genuine repair/testgen/
+    # bootstrap capability failure. Distinct from `repair_exhausted` (a
+    # real repair attempt, using working LLM calls, ran out of rounds) and
+    # from `bootstrap_fail` (the environment genuinely couldn't be set
+    # up) on purpose: this run made no real attempt at all, so counting it
+    # alongside either would understate the true success rate and overstate
+    # a genuine capability gap. Confirmed live 2026-08-30/31: 32 of 34
+    # logged repair_fail/bootstrap_fail campaign attempts were this exact
+    # condition (llm_calls=0 in every one).
+    "llm_unavailable",
 }
 
 

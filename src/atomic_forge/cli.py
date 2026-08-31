@@ -41,7 +41,7 @@ from pathlib import Path
 
 from .batch_io import load_batch_json
 from .decompose import decompose_spec, write_draft_json
-from .llm import default_llm
+from .llm import LLMQuotaError, default_llm
 from .pr import prepare_pr_branch, raise_pr, summarize_repair_for_pr
 from .qa import qa_phase
 from .repair_agent import DEFAULT_TEST_CMD, repair_loop_agentic
@@ -154,199 +154,211 @@ def main(argv=None) -> int:
         print(f"[forge] {e}", file=sys.stderr)
         return 2
 
-    if args.phase == "decompose":
-        if not args.spec:
-            print("[forge] decompose requires --spec <file>", file=sys.stderr)
-            return 2
-        spec_text = Path(args.spec).read_text()
-        result = decompose_spec(spec_text, llm)
-        out_path = write_draft_json(result, args.out)
-        print(f"[forge] decompose: {result.summary()} -> {out_path}")
-        for r in result.rejected:
-            print(f"  REJECTED {r.raw.get('file_path', r.raw.get('name', '?'))}: {r.error.splitlines()[0]}")
-        print("[forge] DRAFT ONLY — review and edit before running `atomic-forge run --tasks "
-              f"{out_path}`; this was not validated the way a hand-written batch is.")
-        return 0 if result.tasks else 1
+    try:
+        if args.phase == "decompose":
+            if not args.spec:
+                print("[forge] decompose requires --spec <file>", file=sys.stderr)
+                return 2
+            spec_text = Path(args.spec).read_text()
+            result = decompose_spec(spec_text, llm)
+            out_path = write_draft_json(result, args.out)
+            print(f"[forge] decompose: {result.summary()} -> {out_path}")
+            for r in result.rejected:
+                print(f"  REJECTED {r.raw.get('file_path', r.raw.get('name', '?'))}: {r.error.splitlines()[0]}")
+            print("[forge] DRAFT ONLY — review and edit before running `atomic-forge run --tasks "
+                  f"{out_path}`; this was not validated the way a hand-written batch is.")
+            return 0 if result.tasks else 1
 
-    if args.phase == "watch":
-        if not args.log_file:
-            print("[forge] watch requires --log-file <path>", file=sys.stderr)
-            return 2
+        if args.phase == "watch":
+            if not args.log_file:
+                print("[forge] watch requires --log-file <path>", file=sys.stderr)
+                return 2
+            project_dir = Path(args.project_dir).resolve()
+            project_dir.mkdir(parents=True, exist_ok=True)
+            traj = Trajectory(project_dir)
+            ensure_repo(project_dir)
+            tools = make_tools(project_dir, backend=args.backend)
+            reporter = make_reporter(args.report, project_dir=str(project_dir))
+            detector = LogFailureDetector(args.log_file)
+            deployer = None
+            if args.deploy_cmd:
+                deployer = LocalProcessCanaryDeployer(
+                    start_cmd=shlex.split(args.deploy_cmd), health_path=args.health_path,
+                )
+            loop = WatchdogLoop(project_dir, llm, tools, traj, detector, deployer=deployer,
+                                reporter=reporter, canary_percent=args.canary_percent,
+                                health_checks=args.health_checks)
+            print(f"[forge] watch: tailing {args.log_file} -> {project_dir} "
+                  f"(canary={'on' if deployer else 'off'}, poll={args.poll_interval}s)")
+            try:
+                if args.max_cycles is not None:
+                    loop.run_forever(poll_interval=args.poll_interval, max_cycles=args.max_cycles)
+                else:
+                    loop.run_forever(poll_interval=args.poll_interval)
+            finally:
+                if deployer is not None:
+                    deployer.teardown_all()
+            return 0
+
+        if args.phase == "fix-comment":
+            from .fix import run_fix_from_comment
+            missing = [n for n, v in (("--repo", args.repo), ("--file", args.comment_file_path)) if not v]
+            if missing:
+                print(f"[forge] fix-comment requires {', '.join(missing)}", file=sys.stderr)
+                return 2
+            if args.comment_body_file:
+                comment_body = sys.stdin.read() if args.comment_body_file == "-" else Path(args.comment_body_file).read_text()
+            elif args.comment_body:
+                comment_body = args.comment_body
+            else:
+                print("[forge] fix-comment requires --comment-body or --comment-body-file", file=sys.stderr)
+                return 2
+            owner, repo = args.repo.split("/", 1) if "/" in args.repo else (None, None)
+            if not owner:
+                print(f"[forge] --repo must be 'owner/repo', got {args.repo!r}", file=sys.stderr)
+                return 2
+            project_dir = (Path(args.project_dir) if args.project_dir and args.project_dir != "./forge_out"
+                           else None)
+            r = run_fix_from_comment(
+                owner, repo, comment_body, args.comment_file_path, llm,
+                line=args.line, source_url=args.source_url, project_dir=project_dir,
+                install_cmd=args.install_cmd, max_rounds=args.max_rounds or 5,
+                max_turns=args.max_turns, dry_run=args.dry_run, pr_base=args.pr_base,
+                pr_branch=args.pr_branch, pr_title=args.pr_title, samples=args.samples,
+                architect_mode=args.architect, skip_bootstrap=args.skip_bootstrap,
+                bootstrap_timeout=args.bootstrap_timeout,
+            )
+            # Machine-parseable, in addition to the human-readable prints
+            # already inside run_fix_from_comment — entrypoint.sh (the GitHub
+            # Action wrapper) greps this exact prefix to populate the
+            # Action's `pr-url` output without CLI/Action coupling beyond one
+            # stable line.
+            print(f"[forge] pr-url={r.get('pr_url') or ''}")
+            return 0 if r.get("success") else 1
+
+        if args.phase == "fix":
+            from .fix import run_fix
+            if not args.url:
+                print("[forge] fix requires a GitHub issue URL:\n"
+                      "  atomic-forge fix https://github.com/<owner>/<repo>/issues/<N>", file=sys.stderr)
+                return 2
+            project_dir = (Path(args.project_dir) if args.project_dir and args.project_dir != "./forge_out"
+                           else None)
+            issue_body_file = Path(args.issue_body_file) if args.issue_body_file else None
+            # .resolve() to an absolute path: confirmed live (astroid #3259/
+            # #3258/#3257, 2026-08-30, three separate runs) that a relative
+            # --repro path silently broke the F1 second-witness check —
+            # run_repro_probe launches the probe as a SUBPROCESS with
+            # cwd=project_dir (the CLONED TARGET repo), not atomic-forge's own
+            # directory, so a relative path resolved against the wrong base
+            # and the probe failed with "can't open file ... No such file or
+            # directory" (exit 2). ANY non-zero exit is read as "bug still
+            # present" (the documented, correct contract for a probe that
+            # genuinely ran and found the bug) — so a merely-unfound file
+            # silently looked identical to a real fix failure, blocking every
+            # PR tonight even when the actual patch was independently
+            # confirmed correct. The pre-flight check happened to still "pass"
+            # by coincidence (file-not-found also reads as "bug present," which
+            # matches the expected pre-fix state) — only the POST-repair
+            # re-check was actually wrong every time.
+            repro = Path(args.repro).resolve() if args.repro else None
+            test_file = Path(args.test_file) if args.test_file else None
+            r = run_fix(args.url, llm, project_dir=project_dir, install_cmd=args.install_cmd,
+                        max_rounds=args.max_rounds or 5, max_turns=args.max_turns,
+                        dry_run=args.dry_run, pr_base=args.pr_base, pr_branch=args.pr_branch,
+                        pr_title=args.pr_title, issue_body_file=issue_body_file, samples=args.samples,
+                        work_root=(Path(args.work_root) if args.work_root else None),
+                        architect_mode=args.architect, skip_bootstrap=args.skip_bootstrap,
+                        bootstrap_timeout=args.bootstrap_timeout, repro=repro, test_file=test_file,
+                        max_turns_per_attempt=args.max_turns_per_attempt)
+            print(f"[forge] pr-url={r.get('pr_url') or ''}")
+            return 0 if r.get("success") else 1
+
+        batch = load_batch_json(args.tasks)
         project_dir = Path(args.project_dir).resolve()
         project_dir.mkdir(parents=True, exist_ok=True)
         traj = Trajectory(project_dir)
-        ensure_repo(project_dir)
+        repo_ok = ensure_repo(project_dir)
         tools = make_tools(project_dir, backend=args.backend)
         reporter = make_reporter(args.report, project_dir=str(project_dir))
-        detector = LogFailureDetector(args.log_file)
-        deployer = None
-        if args.deploy_cmd:
-            deployer = LocalProcessCanaryDeployer(
-                start_cmd=shlex.split(args.deploy_cmd), health_path=args.health_path,
-            )
-        loop = WatchdogLoop(project_dir, llm, tools, traj, detector, deployer=deployer,
-                            reporter=reporter, canary_percent=args.canary_percent,
-                            health_checks=args.health_checks)
-        print(f"[forge] watch: tailing {args.log_file} -> {project_dir} "
-              f"(canary={'on' if deployer else 'off'}, poll={args.poll_interval}s)")
-        try:
-            if args.max_cycles is not None:
-                loop.run_forever(poll_interval=args.poll_interval, max_cycles=args.max_cycles)
-            else:
-                loop.run_forever(poll_interval=args.poll_interval)
-        finally:
-            if deployer is not None:
-                deployer.teardown_all()
-        return 0
+        traj.log("start", phase=args.phase, tasks=len(batch.tasks), git=repo_ok)
+        print(f"[forge] {len(batch.tasks)} task(s) -> {project_dir} "
+              f"(report={reporter.name()}, git={'on' if repo_ok else 'OFF'})")
 
-    if args.phase == "fix-comment":
-        from .fix import run_fix_from_comment
-        missing = [n for n, v in (("--repo", args.repo), ("--file", args.comment_file_path)) if not v]
-        if missing:
-            print(f"[forge] fix-comment requires {', '.join(missing)}", file=sys.stderr)
-            return 2
-        if args.comment_body_file:
-            comment_body = sys.stdin.read() if args.comment_body_file == "-" else Path(args.comment_body_file).read_text()
-        elif args.comment_body:
-            comment_body = args.comment_body
-        else:
-            print("[forge] fix-comment requires --comment-body or --comment-body-file", file=sys.stderr)
-            return 2
-        owner, repo = args.repo.split("/", 1) if "/" in args.repo else (None, None)
-        if not owner:
-            print(f"[forge] --repo must be 'owner/repo', got {args.repo!r}", file=sys.stderr)
-            return 2
-        project_dir = (Path(args.project_dir) if args.project_dir and args.project_dir != "./forge_out"
-                       else None)
-        r = run_fix_from_comment(
-            owner, repo, comment_body, args.comment_file_path, llm,
-            line=args.line, source_url=args.source_url, project_dir=project_dir,
-            install_cmd=args.install_cmd, max_rounds=args.max_rounds or 5,
-            max_turns=args.max_turns, dry_run=args.dry_run, pr_base=args.pr_base,
-            pr_branch=args.pr_branch, pr_title=args.pr_title, samples=args.samples,
-            architect_mode=args.architect, skip_bootstrap=args.skip_bootstrap,
-            bootstrap_timeout=args.bootstrap_timeout,
-        )
-        # Machine-parseable, in addition to the human-readable prints
-        # already inside run_fix_from_comment — entrypoint.sh (the GitHub
-        # Action wrapper) greps this exact prefix to populate the
-        # Action's `pr-url` output without CLI/Action coupling beyond one
-        # stable line.
-        print(f"[forge] pr-url={r.get('pr_url') or ''}")
-        return 0 if r.get("success") else 1
+        gen_failed: list = []
+        gen_skipped: list = []
+        if args.phase in ("run", "generate"):
+            print("[forge] phase 1/3: generating files...")
+            from .generate_agent import generate_batch_agentic
+            gen_result = generate_batch_agentic(project_dir, batch, llm, tools, traj, reporter=reporter)
+            gen_failed, gen_skipped = gen_result.failed, gen_result.skipped
+            for w in gen_result.written:
+                print(f"  wrote {w.relative_to(project_dir)}")
+            for f in gen_failed:
+                print(f"  FAILED {f.file_path} (task {f.name}): {f.reason}")
+            for s in gen_skipped:
+                print(f"  SKIPPED {s.file_path} (task {s.name}): {s.reason}")
 
-    if args.phase == "fix":
-        from .fix import run_fix
-        if not args.url:
-            print("[forge] fix requires a GitHub issue URL:\n"
-                  "  atomic-forge fix https://github.com/<owner>/<repo>/issues/<N>", file=sys.stderr)
-            return 2
-        project_dir = (Path(args.project_dir) if args.project_dir and args.project_dir != "./forge_out"
-                       else None)
-        issue_body_file = Path(args.issue_body_file) if args.issue_body_file else None
-        # .resolve() to an absolute path: confirmed live (astroid #3259/
-        # #3258/#3257, 2026-08-30, three separate runs) that a relative
-        # --repro path silently broke the F1 second-witness check —
-        # run_repro_probe launches the probe as a SUBPROCESS with
-        # cwd=project_dir (the CLONED TARGET repo), not atomic-forge's own
-        # directory, so a relative path resolved against the wrong base
-        # and the probe failed with "can't open file ... No such file or
-        # directory" (exit 2). ANY non-zero exit is read as "bug still
-        # present" (the documented, correct contract for a probe that
-        # genuinely ran and found the bug) — so a merely-unfound file
-        # silently looked identical to a real fix failure, blocking every
-        # PR tonight even when the actual patch was independently
-        # confirmed correct. The pre-flight check happened to still "pass"
-        # by coincidence (file-not-found also reads as "bug present," which
-        # matches the expected pre-fix state) — only the POST-repair
-        # re-check was actually wrong every time.
-        repro = Path(args.repro).resolve() if args.repro else None
-        test_file = Path(args.test_file) if args.test_file else None
-        r = run_fix(args.url, llm, project_dir=project_dir, install_cmd=args.install_cmd,
-                    max_rounds=args.max_rounds or 5, max_turns=args.max_turns,
-                    dry_run=args.dry_run, pr_base=args.pr_base, pr_branch=args.pr_branch,
-                    pr_title=args.pr_title, issue_body_file=issue_body_file, samples=args.samples,
-                    work_root=(Path(args.work_root) if args.work_root else None),
-                    architect_mode=args.architect, skip_bootstrap=args.skip_bootstrap,
-                    bootstrap_timeout=args.bootstrap_timeout, repro=repro, test_file=test_file,
-                    max_turns_per_attempt=args.max_turns_per_attempt)
-        print(f"[forge] pr-url={r.get('pr_url') or ''}")
-        return 0 if r.get("success") else 1
+        if args.phase in ("run", "qa"):
+            print("[forge] phase 2/3: generating tests from TestTriads...")
+            for t in qa_phase(project_dir, batch, llm, tools, traj, reporter=reporter):
+                print(f"  wrote {t.relative_to(project_dir)}")
+            tools.reindex()
 
-    batch = load_batch_json(args.tasks)
-    project_dir = Path(args.project_dir).resolve()
-    project_dir.mkdir(parents=True, exist_ok=True)
-    traj = Trajectory(project_dir)
-    repo_ok = ensure_repo(project_dir)
-    tools = make_tools(project_dir, backend=args.backend)
-    reporter = make_reporter(args.report, project_dir=str(project_dir))
-    traj.log("start", phase=args.phase, tasks=len(batch.tasks), git=repo_ok)
-    print(f"[forge] {len(batch.tasks)} task(s) -> {project_dir} "
-          f"(report={reporter.name()}, git={'on' if repo_ok else 'OFF'})")
-
-    gen_failed: list = []
-    gen_skipped: list = []
-    if args.phase in ("run", "generate"):
-        print("[forge] phase 1/3: generating files...")
-        from .generate_agent import generate_batch_agentic
-        gen_result = generate_batch_agentic(project_dir, batch, llm, tools, traj, reporter=reporter)
-        gen_failed, gen_skipped = gen_result.failed, gen_result.skipped
-        for w in gen_result.written:
-            print(f"  wrote {w.relative_to(project_dir)}")
-        for f in gen_failed:
-            print(f"  FAILED {f.file_path} (task {f.name}): {f.reason}")
-        for s in gen_skipped:
-            print(f"  SKIPPED {s.file_path} (task {s.name}): {s.reason}")
-
-    if args.phase in ("run", "qa"):
-        print("[forge] phase 2/3: generating tests from TestTriads...")
-        for t in qa_phase(project_dir, batch, llm, tools, traj, reporter=reporter):
-            print(f"  wrote {t.relative_to(project_dir)}")
-        tools.reindex()
-
-    if args.phase in ("run", "repair"):
-        if args.raise_pr and args.phase == "repair":
-            try:
-                pr_branch = prepare_pr_branch(project_dir, args.pr_branch)
-                print(f"[forge] --raise-pr: working on branch {pr_branch}")
-            except Exception as e:
-                print(f"[forge] --raise-pr: could not prepare branch ({e}); continuing on current branch")
-        print("[forge] phase 3/3: testing + repair loop...")
-        report = repair_loop_agentic(project_dir, llm, tools, traj,
-                                     test_cmd=args.test_cmd, max_rounds=args.max_rounds or 3,
-                                     samples=args.samples, timeout=args.timeout,
-                                     reporter=reporter, architect_mode=args.architect,
-                                     tasks_by_file={t.file_path: t.name for t in batch.dev_tasks()})
-        state = "GREEN" if report["success"] else "EXHAUSTED"
-        print(f"[repair] {state} — failures {report['initial_failures']} -> "
-              f"{report['final_failures']} in {report['rounds']} round(s); "
-              f"touched: {', '.join(report.get('repaired_files', [])) or 'none'}")
-        ok = report["success"]
-        usage = getattr(llm, "usage", None)
-        if usage:
-            print(f"[forge] {usage.summary()}")
-        if ok and args.raise_pr:
-            body = ""
-            if args.pr_body_file:
+        if args.phase in ("run", "repair"):
+            if args.raise_pr and args.phase == "repair":
                 try:
-                    body = Path(args.pr_body_file).read_text()
-                except OSError:
-                    body = ""
-            if not body:
-                _title, body = summarize_repair_for_pr(report)
-            title = args.pr_title or _title
-            try:
-                pr = raise_pr(project_dir, title=title, body=body, base=args.pr_base)
-                print(f"[forge] PR opened: {pr.get('pr_url')} "
-                      f"(base {pr.get('base')} <- {pr.get('branch')})")
-            except Exception as e:
-                print(f"[forge] --raise-pr failed: {e}")
-                ok = False
-        print(f"[forge] trajectory: {traj.path}")
-        return 0 if ok else 1
+                    pr_branch = prepare_pr_branch(project_dir, args.pr_branch)
+                    print(f"[forge] --raise-pr: working on branch {pr_branch}")
+                except Exception as e:
+                    print(f"[forge] --raise-pr: could not prepare branch ({e}); continuing on current branch")
+            print("[forge] phase 3/3: testing + repair loop...")
+            report = repair_loop_agentic(project_dir, llm, tools, traj,
+                                         test_cmd=args.test_cmd, max_rounds=args.max_rounds or 3,
+                                         samples=args.samples, timeout=args.timeout,
+                                         reporter=reporter, architect_mode=args.architect,
+                                         tasks_by_file={t.file_path: t.name for t in batch.dev_tasks()})
+            state = "GREEN" if report["success"] else "EXHAUSTED"
+            print(f"[repair] {state} — failures {report['initial_failures']} -> "
+                  f"{report['final_failures']} in {report['rounds']} round(s); "
+                  f"touched: {', '.join(report.get('repaired_files', [])) or 'none'}")
+            ok = report["success"]
+            usage = getattr(llm, "usage", None)
+            if usage:
+                print(f"[forge] {usage.summary()}")
+            if ok and args.raise_pr:
+                body = ""
+                if args.pr_body_file:
+                    try:
+                        body = Path(args.pr_body_file).read_text()
+                    except OSError:
+                        body = ""
+                if not body:
+                    _title, body = summarize_repair_for_pr(report)
+                title = args.pr_title or _title
+                try:
+                    pr = raise_pr(project_dir, title=title, body=body, base=args.pr_base)
+                    print(f"[forge] PR opened: {pr.get('pr_url')} "
+                          f"(base {pr.get('base')} <- {pr.get('branch')})")
+                except Exception as e:
+                    print(f"[forge] --raise-pr failed: {e}")
+                    ok = False
+            print(f"[forge] trajectory: {traj.path}")
+            return 0 if ok else 1
 
-    print(f"[forge] trajectory: {traj.path}")
-    return 1 if gen_failed else 0
+        print(f"[forge] trajectory: {traj.path}")
+        return 1 if gen_failed else 0
+    except LLMQuotaError as e:
+        # Mirrors fix.py's own LLMQuotaError handling for the fix/fix-comment
+        # phases (which route through _run_fix_pipeline and record an honest
+        # exit_audit "llm_unavailable" row) — this is the safety net for every
+        # OTHER phase (run/generate/qa/repair/watch), which has no exit_audit
+        # of its own but still deserves a recognizable message instead of a
+        # bare Python traceback when an LLM call exhausts its retries against
+        # a quota/rate-limit wall (see llm.py's LLMQuotaError docstring).
+        print(f"[forge] abort: LLM quota/rate-limit exhausted ({e}); this is an infra "
+              "condition, not a task failure — retry once quota resets.", file=sys.stderr)
+        return 3
 
 
 if __name__ == "__main__":

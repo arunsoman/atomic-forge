@@ -82,7 +82,8 @@ class ToolCallingChatLLM(Protocol):
     (agent.py::run_agent, given a structured tool_manifest) looks for this
     at all."""
     def chat_with_tools(self, messages: List[Message], tools: List[dict],
-                        temperature: float = 0.0, max_tokens: int = 8192) -> ChatTurn:
+                        temperature: float = 0.0, max_tokens: int = 8192,
+                        tool_choice: Any = "auto") -> ChatTurn:
         ...
 
 
@@ -107,10 +108,54 @@ class UsageTracker:
                 f"completion_tokens={self.completion_tokens}")
 
 
+class LLMQuotaError(RuntimeError):
+    """Raised by `chat`/`chat_with_tools` in place of the generic
+    `RuntimeError` when every retry was exhausted AND the last error looks
+    like a rate-limit/quota condition (HTTP 429, "rate limit", "session
+    usage limit" — the exact signature of an Ollama Cloud/OpenAI quota
+    exhaustion) rather than a genuine, non-transient failure.
+
+    This exists because a plain `RuntimeError("LLM call failed after N
+    retries: ...")` is indistinguishable, to every catcher up the stack,
+    from any other reason an LLM call could fail — so a quota outage got
+    silently absorbed into whichever failure bucket happened to be active
+    at the call site (testgen's uncaught crash with no exit_audit row at
+    all; a would-be `repair_exhausted`/`bootstrap_fail` if it had been
+    caught generically), each implying "the repair effort itself, using
+    working LLM calls, didn't succeed" — false in every one of these
+    cases. Confirmed live 2026-08-30/31: of 34 logged repair_fail/
+    bootstrap_fail campaign attempts, 32 were 100% quota artifacts
+    (llm_calls=0 in every one, the literal 429 string in every log tail).
+
+    Subclasses RuntimeError on purpose: every existing `except Exception`/
+    `except RuntimeError` catch site up the stack (bootstrap.py's "must
+    never raise" LLM call, _plan_repair's optional planning pass, etc.)
+    keeps working completely unchanged. Only a caller that adds a
+    specific `except LLMQuotaError` — see fix.py's `_run_fix_pipeline` —
+    gets to tell this apart and record the honest `llm_unavailable`
+    exit_audit reason instead of conflating it with a real capability
+    failure."""
+
+
+#: Substrings (checked case-insensitively against the exception's own
+#: str()) that mark a quota/rate-limit condition even when the SDK
+#: exception's `status_code` attribute isn't populated (a raw httpx/
+#: connection-layer error whose message still carries the provider's
+#: "Error code: 429 - ..." body). Mirrors the exact patterns the
+#: benchmarks/real_issues/run_round3.py campaign-script fix already
+#: uses downstream of this — see that module's outcome classifier —
+#: kept in sync deliberately: "rate limit", "session usage limit",
+#: "error code: 429".
+_RATE_LIMIT_MARKERS = ("rate limit", "session usage limit", "error code: 429")
+
+
 def _is_rate_limited(e: Exception) -> bool:
     if getattr(e, "status_code", None) == 429:
         return True
-    return "ratelimit" in type(e).__name__.lower()
+    if "ratelimit" in type(e).__name__.lower():
+        return True
+    msg = str(e).lower()
+    return any(marker in msg for marker in _RATE_LIMIT_MARKERS)
 
 
 @dataclass
@@ -165,21 +210,30 @@ class OpenAICompatLLM:
                 if self.on_rate_limited is not None and _is_rate_limited(e):
                     self.on_rate_limited()
                 time.sleep(min(2 ** attempt * 2, 30))
+        if _is_rate_limited(last_err):
+            raise LLMQuotaError(
+                f"LLM call failed after {self.max_retries} retries — last error looks like a "
+                f"rate-limit/quota condition, not a genuine model failure: {last_err}") from last_err
         raise RuntimeError(f"LLM call failed after {self.max_retries} retries: {last_err}")
 
     def chat_with_tools(self, messages: List[Message], tools: List[dict],
-                        temperature: float = 0.0, max_tokens: int = 8192) -> ChatTurn:
-        """Real OpenAI-spec function-calling (tools=/tool_choice="auto"),
-        for callers that want the model to invoke tools via the API's own
+                        temperature: float = 0.0, max_tokens: int = 8192,
+                        tool_choice: Any = "auto") -> ChatTurn:
+        """Real OpenAI-spec function-calling (tools=/tool_choice=), for
+        callers that want the model to invoke tools via the API's own
         structured tool_calls — parsed and validated by the provider/SDK,
-        not by a regex-based text grammar."""
+        not by a regex-based text grammar. `tool_choice` defaults to "auto"
+        (let the model decide) but accepts the OpenAI-spec forced form
+        (e.g. {"type": "function", "function": {"name": "write_file"}}) for
+        a caller that needs a guarantee, not a request, that a specific
+        tool gets called this turn — see testgen.py's final-turn write."""
         client = self._client()
         last_err: Optional[Exception] = None
         for attempt in range(self.max_retries):
             try:
                 resp = client.chat.completions.create(
                     model=self.model, messages=messages, temperature=temperature,
-                    max_tokens=max_tokens, tools=tools, tool_choice="auto",
+                    max_tokens=max_tokens, tools=tools, tool_choice=tool_choice,
                 )
                 self.usage.record(getattr(resp, "usage", None))
                 msg = resp.choices[0].message
@@ -193,6 +247,10 @@ class OpenAICompatLLM:
                 if self.on_rate_limited is not None and _is_rate_limited(e):
                     self.on_rate_limited()
                 time.sleep(min(2 ** attempt * 2, 30))
+        if _is_rate_limited(last_err):
+            raise LLMQuotaError(
+                f"LLM call failed after {self.max_retries} retries — last error looks like a "
+                f"rate-limit/quota condition, not a genuine model failure: {last_err}") from last_err
         raise RuntimeError(f"LLM call failed after {self.max_retries} retries: {last_err}")
 
 

@@ -17,6 +17,27 @@ def test_detects_cmake_stack(tmp_path):
     assert stack.image == "gcc:14"
 
 
+def test_cmake_configure_enables_build_testing(tmp_path):
+    """`enable_testing()`/`add_test(` can sit inside an
+    `if(BUILD_TESTING) ... endif()` guard — the standard CTest option
+    (from `include(CTest)`) that some projects default OFF. The marker
+    scan finds the text either way (same as before), but the actual
+    configure step must turn the option ON or a guarded project silently
+    builds with no tests at all despite `_cmake_declares_tests` saying
+    yes."""
+    (tmp_path / "CMakeLists.txt").write_text(
+        "cmake_minimum_required(VERSION 3.10)\nproject(foo C)\n"
+        "include(CTest)\n"
+        "if(BUILD_TESTING)\n"
+        "  add_executable(main main.c)\n"
+        "  add_test(NAME main COMMAND main)\n"
+        "endif()\n"
+    )
+    stack = detect_test_stack(tmp_path)
+    assert stack is not None
+    assert "-DBUILD_TESTING=ON" in stack.cmd
+
+
 def test_cmake_without_scannable_tests_is_untreated(tmp_path):
     """A CMake repo that never declares tests deterministically says so —
     'not testable yet' (existing RepoStack contract), not a guessed

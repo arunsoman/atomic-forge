@@ -92,6 +92,7 @@ def probe_repo(upstream: str) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--probe", help="candidates.jsonl to enrich in place")
+    ap.add_argument("--out", help="write enriched rows here instead of --probe (in place)")
     ap.add_argument("--repo", help="single owner/repo verdict")
     args = ap.parse_args()
     if args.repo:
@@ -114,7 +115,8 @@ def main() -> int:
         v = verdicts[r["repo"]]
         r["pr_ok"] = v["pr"] == "open"
         r["pr_note"] = v["reason"]
-    path.write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in rows) + "\n")
+    out = Path(args.out) if args.out else path
+    out.write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in rows) + "\n")
     open_n = sum(1 for v in verdicts.values() if v["pr"] == "open")
     print(f"probed {len(verdicts)} repos: {open_n} PR-open, "
           f"{sum(1 for v in verdicts.values() if v['pr'] == 'locked')} locked, "

@@ -33,3 +33,14 @@ def test_record_exit_rejects_unknown_reason(tmp_path):
 
 def test_read_exits_empty_when_never_written(tmp_path):
     assert read_exits(tmp_path) == []
+
+
+def test_llm_unavailable_is_a_registered_reason(tmp_path):
+    """Distinct from repair_exhausted/bootstrap_fail on purpose — see
+    llm.py's LLMQuotaError and fix.py's handling of it: an LLM call that
+    exhausted its retries against a quota/rate-limit wall made no real
+    repair/testgen/bootstrap attempt at all, so it must not be counted
+    alongside a genuine capability failure."""
+    record_exit(tmp_path, reason="llm_unavailable", detail="429 after 4 retries")
+    exits = read_exits(tmp_path)
+    assert exits[0]["reason"] == "llm_unavailable"

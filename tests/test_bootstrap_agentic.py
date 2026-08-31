@@ -247,6 +247,52 @@ def test_gate_stays_deterministic_without_opt_in(tmp_path):
     assert "FORGE_ENABLE_AGENTIC_BOOTSTRAP=1" in report["detail"]
 
 
+def test_configurator_llm_quota_error_propagates_not_bootstrap_fail(tmp_path, fake_docker):
+    """The configurator's own LLM call hitting a quota/rate-limit wall
+    must NOT be folded into a generic `_fail(FAILED_AGENTIC, ...)` verdict
+    the way every other LLM failure is — that would surface in exit_audit
+    as `bootstrap_fail`, indistinguishable from a genuine "this repo
+    couldn't be bootstrapped" failure. It must propagate as LLMQuotaError
+    instead (fix.py's `_run_fix_pipeline` catches it and records the
+    honest `llm_unavailable` reason), with the scratch container still
+    cleaned up via `agentic_bootstrap`'s own `finally`."""
+    from atomic_forge.llm import LLMQuotaError
+
+    repo = _repo(tmp_path)
+
+    class QuotaExhaustedLLM:
+        def chat(self, messages, temperature=0.0, max_tokens=8192):
+            if len(messages) == 1 and messages[0]["role"] == "user":
+                return "c++"  # _choose_base_image's own call — answer normally
+            raise LLMQuotaError("LLM call failed after 4 retries: Error code: 429 - "
+                                "session usage limit reached")
+
+    with pytest.raises(LLMQuotaError):
+        agentic_bootstrap(repo, QuotaExhaustedLLM())
+    # cleanup still ran despite the exception propagating
+    assert fake_docker["killed"] == [f"ctr-{fake_docker['created'][-1].replace(':', '-')}"]
+
+
+def test_gate_configurator_llm_quota_error_propagates_through_gate(tmp_path, fake_docker, monkeypatch):
+    """Same regression, exercised through the public run_bootstrap_gate()
+    entry point fix.py actually calls."""
+    from atomic_forge.llm import LLMQuotaError
+    import subprocess
+    repo = _repo(tmp_path)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+
+    class QuotaExhaustedLLM:
+        def chat(self, messages, temperature=0.0, max_tokens=8192):
+            if len(messages) == 1 and messages[0]["role"] == "user":
+                return "c++"
+            raise LLMQuotaError("LLM call failed after 4 retries: Error code: 429")
+
+    monkeypatch.setenv("FORGE_ENABLE_AGENTIC_BOOTSTRAP", "1")
+    with pytest.raises(LLMQuotaError):
+        run_bootstrap_gate(repo, llm=QuotaExhaustedLLM(), allow_agentic=True,
+                           db_path=tmp_path / "ck.sqlite")
+
+
 def test_gate_docker_missing_leaves_host_untouched(tmp_path, monkeypatch):
     """The load-bearing safety claim: without Docker the agentic path is a
     clean unsupported verdict, never a host-side attempt."""

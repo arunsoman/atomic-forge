@@ -40,7 +40,7 @@ from .exit_audit import record_exit
 from .issue import (clone_repo, fetch_issue, issue_to_bug_description,
                     make_test_cmd, parse_issue_url, setup_python_env, upstream_slug)
 from .learning import run_postmortem
-from .llm import OpenAICompatLLM
+from .llm import LLMQuotaError, OpenAICompatLLM
 from .pr import default_branch_for, forge_footer, prepare_pr_branch, raise_pr_via_fork
 from .repair_agent import repair_loop_agentic
 from .testgen import generate_regression_test, oracle_fails_on_buggy
@@ -317,8 +317,25 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
         # llm + allow_agentic: the R16c Repo2Run-style fallback runs only when
         # FORGE_ENABLE_AGENTIC_BOOTSTRAP=1 (it spends real tokens in a Docker
         # sandbox — never enabled merely by passing an llm).
-        _gate = bootstrap_mod.run_bootstrap_gate(
-            project_dir, timeout=bootstrap_timeout, llm=llm, allow_agentic=True)
+        try:
+            _gate = bootstrap_mod.run_bootstrap_gate(
+                project_dir, timeout=bootstrap_timeout, llm=llm, allow_agentic=True)
+        except LLMQuotaError as e:
+            # The R16c agentic fallback's own configurator LLM call hit a
+            # quota/rate-limit wall (see bootstrap.py's agentic_bootstrap,
+            # which re-raises this specific type instead of folding it into
+            # a generic _fail()/"bootstrap_fail" verdict the way it does
+            # every other LLM failure). No genuine bootstrap attempt was
+            # made or refuted — record the honest reason, not bootstrap_fail.
+            print(f"[forge fix] abort: LLM quota/rate-limit exhausted during the bootstrap "
+                  f"gate's agentic fallback ({e}); this is an infra condition, not a bootstrap "
+                  "failure — retry once quota resets.")
+            record_exit(project_dir, reason="llm_unavailable", detail=str(e)[:500],
+                       extra={"issue": url, "stage": "bootstrap"})
+            return {"url": url, "upstream": upstream, "branch": pr_branch or pr_branch_default,
+                    "test_file": f"tests/test_forge_{test_id}.py", "success": False,
+                    "stage": "bootstrap", "reason": f"LLM quota/rate-limit exhausted: {e}",
+                    **result_extra}
         if not _gate["ok"]:
             print(f"[forge fix] abort at bootstrap gate: {_gate['verdict']} — {_gate['detail']}")
             record_exit(project_dir, reason="bootstrap_fail", detail=_gate["detail"],
@@ -557,6 +574,27 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
             return result
         record_exit(project_dir, reason="success",
                    detail=result.get("pr_url") or "dry_run", extra={"issue": url})
+        return result
+    except LLMQuotaError as e:
+        # Raised by llm.py's chat()/chat_with_tools() when every retry was
+        # exhausted against what looks like a quota/rate-limit condition —
+        # can surface from testgen's agent (generate_regression_test),
+        # repair_loop_agentic's sampling/planning calls, or anywhere else
+        # in this block that spends an LLM call. Confirmed live 2026-08-30/
+        # 31: this exact RuntimeError (unrecognized as this specific
+        # subclass at the time) crashed the process uncaught — no
+        # exit_audit row at all — in 32 of 34 logged campaign failures, all
+        # genuine Ollama Cloud quota exhaustion, none a real repair/testgen
+        # failure. Recording it as its own honest reason (never
+        # repair_exhausted, never a silent crash) is the fix: this attempt
+        # made no real repair effort, so it must not count as one.
+        print(f"[forge fix] abort: LLM quota/rate-limit exhausted ({e}); no repair/testgen "
+              "attempt completed in this state, no PR raised. This is an infra condition, "
+              "not a repair failure — retry once quota resets (see benchmarks/real_issues/"
+              "run_round3.py's infra_fail auto-retry for the campaign-level analog).")
+        record_exit(project_dir, reason="llm_unavailable", detail=str(e)[:500],
+                   extra={"issue": url})
+        result.update(success=False, stage="llm", reason=f"LLM quota/rate-limit exhausted: {e}")
         return result
     finally:
         if bridge is not None:

@@ -559,7 +559,20 @@ def run_agent(llm: ChatLLM, tools: ToolBackend, project_dir, system: str,
 
     for turn in range(1, max_turns + 1):
         if use_fc:
-            chat_turn = llm.chat_with_tools(messages, tools=openai_tools, temperature=temperature)
+            # Confirmed same class of bug as testgen.py's write_file forcing
+            # fix (round-3 RCA, sphinx#14656/14625, urllib3#5164): the soft
+            # "NOTE: only N turn(s) left" nudges below are a request, not a
+            # guarantee, and a model was confirmed live to read them and
+            # keep calling investigation tools anyway, right through the
+            # true final turn, producing no patch at all. On the actual
+            # last turn, if nothing has been patched yet, force the API's
+            # own tool_choice to `patch` specifically — the model is then
+            # structurally unable to call anything else this turn.
+            tool_choice: object = "auto"
+            if turn == max_turns and last_patch is None:
+                tool_choice = {"type": "function", "function": {"name": "patch"}}
+            chat_turn = llm.chat_with_tools(messages, tools=openai_tools, temperature=temperature,
+                                            tool_choice=tool_choice)
             if chat_turn.tool_calls:
                 # Confirmed live on astroid#769 (2026-08-30): a name-only preview
                 # ("run_shell, run_shell, ...") made a whole class of stuck-loop
@@ -792,6 +805,61 @@ def run_agent(llm: ChatLLM, tools: ToolBackend, project_dir, system: str,
 
         messages += [{"role": "assistant", "content": output},
                      {"role": "user", "content": f"OBSERVATION:\n{truncate(observation, OBS_LIMIT)}"}]
+
+    # Round-3 RCA (celery/celery#10102, confirmed live 2026-08-31 against
+    # Ollama Cloud's glm-5.2:cloud): forcing tool_choice is not honored by
+    # every provider — a direct API probe showed the SAME forced-to-a-
+    # specific-function tool_choice silently ignored (a different tool
+    # called anyway), and tool_choice="required" with only one tool
+    # offered returned ZERO tool calls, finish_reason "stop". So the
+    # tool_choice force above is not a guarantee against every backend —
+    # only reaching this point with `last_patch is None` proves it didn't
+    # work here. Fall back to ONE plain chat() call (no tools at all,
+    # `use_fc` path only — the non-fc path already relies on plain text
+    # throughout, so it has no equivalent gap), asking for a patch in the
+    # same PATCH/SEARCH-REPLACE text format `parse_action` already
+    # understands. There is no tool call for the model to decline this
+    # time — a live probe confirmed a plain-text ask reliably produces
+    # exactly the requested content where a tool call did not.
+    if use_fc and last_patch is None:
+        fallback_prompt = (
+            "Turn budget is exhausted and no patch was ever recorded. Reply with a "
+            "line containing exactly PATCH, followed by one or more SEARCH/REPLACE "
+            "blocks (<<<<<<< SEARCH / ======= / >>>>>>> REPLACE) or one fenced code "
+            "block with the complete fixed file — using what you've already learned "
+            "from this session. This is the last chance for this attempt to produce "
+            "anything at all.")
+        text = llm.chat(messages + [{"role": "user", "content": fallback_prompt}],
+                        temperature=temperature)
+        kind, payload = parse_action(text)
+        traj.log(f"{tag}_fallback_plain_text", kind=kind, payload_preview=payload[:4000])
+        if kind == "patch" and payload.strip():
+            last_patch = payload
+            last_patch_path = None
+
+    # Deterministic fallback: forcing `patch` on the true final turn (above)
+    # guarantees a patch ATTEMPT gets made, but that alone is not enough —
+    # this function's contract is "success" only after submit_check
+    # validates the patch, and a forced (or organically late) patch that
+    # never reached an explicit SUBMIT/submit tool call before the budget
+    # ran out was previously discarded outright and silently, even when it
+    # was a genuinely good fix (`_attempt_patch` in repair_agent.py, and
+    # `generate_file_agentic` in generate_agent.py, both require
+    # `result.success` to keep anything). If anything was ever patched,
+    # give it one last automatic submit_check pass before declaring the
+    # whole attempt a loss — this is the same "structural guarantee, not a
+    # request" principle as the tool_choice force above, just covering the
+    # half of the last turn tool_choice forcing can't reach (the model
+    # still has to be the one to decide the patch is done; nothing forces
+    # a subsequent `submit`/SUBMIT call in the same turn).
+    if last_patch is not None:
+        if submit_check is None:
+            ok, feedback = True, ""
+        else:
+            ok, feedback = submit_check(last_patch, last_patch_path)
+        traj.log(f"{tag}_auto_submit", turn=max_turns, accepted=ok, feedback=feedback[:300])
+        if ok:
+            return AgentResult(True, max_turns, last_patch, messages=messages)
 
     traj.log(f"{tag}_abort", reason="turn budget exhausted")
     return AgentResult(False, max_turns, last_patch, f"turn budget ({max_turns}) exhausted", messages)

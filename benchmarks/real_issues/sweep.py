@@ -26,8 +26,13 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from sweep_lib import harvest_and_clean, parse_cost, prune_docker  # noqa: E402
+
 CANDIDATES = HERE / "sweep" / "candidates.jsonl"
 RESULTS = HERE / "sweep" / "results.jsonl"
+LOGS_DIR = HERE / "logs"
+TMP_ROOT = Path(os.environ.get("TMPDIR", "/tmp")) / "forge_fix"
 
 PY = sys.executable
 
@@ -140,7 +145,8 @@ def sweep(issues: list[dict], env: dict, budget_min: float,
                "pr_url": pr_url, "seconds": seconds,
                "returncode": rc,
                "model": env.get("FORGE_MODEL"), "at": time.strftime("%F %T"),
-               "log_tail": tail if pr_url is None else None}
+               "log_tail": tail if pr_url is None else None,
+               **parse_cost(stdout)}
         with results_path.open("a") as fh:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
         if pr_url:
@@ -150,6 +156,9 @@ def sweep(issues: list[dict], env: dict, budget_min: float,
             print(f"  {status} ({seconds}s): {tail[-1][:110] if tail else ''}",
                   file=sys.stderr)
         used_per_repo[repo] = used_per_repo.get(repo, 0) + 1
+        harvest_and_clean(TMP_ROOT, LOGS_DIR, repo, cand["number"], result=rec)
+        if (ok + fail) % 2 == 0:
+            prune_docker()
     print(f"sweep: {ok} PR(s) raised, {fail} not — {ok + fail} attempted",
           file=sys.stderr)
 
@@ -176,6 +185,11 @@ def main() -> int:
     env.setdefault("FORGE_BASE_URL", "http://localhost:11434/v1")
     env.setdefault("FORGE_API_KEY", "ollama")
     env.setdefault("FORGE_ENABLE_AGENTIC_BOOTSTRAP", "1")
+    env.setdefault("FORGE_FORK_ORG", "kannamma-labs")
+    # Every commit must carry this identity, not the operator's personal
+    # git identity — see _apply_forge_identity() in sandbox.py.
+    env.setdefault("FORGE_GIT_USER_NAME", "kannamalabs")
+    env.setdefault("FORGE_GIT_USER_EMAIL", "322530453+kannamalabs@users.noreply.github.com")
     # the fix pipeline can leave OUR venv's pydantic/pydantic-core desynced
     # (a known razor-burn: healed force-aligned before each batch)
     subprocess.run([PY, "-m", "pip", "install", "-q",

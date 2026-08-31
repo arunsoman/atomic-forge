@@ -17,12 +17,18 @@ class ScriptedToolCallLLM:
         self.turns = list(turns)
         self.calls = 0
         self._lock = threading.Lock()
+        #: every `tool_choice` this instance was called with, in order —
+        #: lets a test assert run_agent only forces tool_choice on the
+        #: turn(s) it's supposed to (see test_agent.py's forced-tool-choice
+        #: regression test), same pattern as testgen's IgnoresTheNudgeLLM.
+        self.tool_choices_seen: list = []
 
-    def chat_with_tools(self, messages, tools, temperature=0.0, max_tokens=8192):
+    def chat_with_tools(self, messages, tools, temperature=0.0, max_tokens=8192, tool_choice="auto"):
         import json
         with self._lock:
             idx = self.calls
             self.calls += 1
+        self.tool_choices_seen.append(tool_choice)
         entry = self.turns[idx] if idx < len(self.turns) else self.turns[-1]
         if isinstance(entry, str):
             return ChatTurn(content=entry, tool_calls=[])

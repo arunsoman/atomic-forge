@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -27,8 +26,12 @@ from collections import defaultdict
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from sweep_lib import harvest_and_clean, parse_cost, prune_docker  # noqa: E402
+
 CANDIDATES = HERE / "sweep" / "candidates.jsonl"
 RESULTS = HERE / "sweep" / "results_round2.jsonl"
+LOGS_DIR = HERE / "logs"
 TMP_ROOT = Path("/tmp/forge_fix")
 PY = sys.executable
 FORGE_BIN = str(Path(sys.executable).parent / "atomic-forge")
@@ -46,26 +49,6 @@ def load_done(path: Path) -> set[str]:
             except json.JSONDecodeError:
                 continue
     return done
-
-
-def prune_docker() -> None:
-    for cmd in (["docker", "container", "prune", "-f"],
-                ["docker", "volume", "prune", "-f"]):
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        print(f"  $ {' '.join(cmd)} -> {(r.stdout or r.stderr).strip()[:120]}",
-              file=sys.stderr)
-
-
-def clean_clone(repo: str, number: int) -> None:
-    """Remove this issue's /tmp/forge_fix clone — bounds disk growth to
-    ~1 clone+venv at a time instead of accumulating all 50."""
-    slug = f"{repo.split('/')[-1]}-{number}"
-    d = TMP_ROOT / slug
-    if d.is_dir():
-        size = subprocess.run(["du", "-sh", str(d)], capture_output=True, text=True).stdout.split()[0] \
-            if d.exists() else "?"
-        shutil.rmtree(d, ignore_errors=True)
-        print(f"  cleaned {d} ({size})", file=sys.stderr)
 
 
 def run_one(cand: dict, env: dict, timeout_s: int) -> dict:
@@ -101,7 +84,8 @@ def run_one(cand: dict, env: dict, timeout_s: int) -> dict:
     rec = {"issue": url, "repo": repo, "number": number, "title": cand["title"],
            "status": status, "pr_url": pr_url, "seconds": seconds,
            "returncode": rc, "model": env.get("FORGE_MODEL"),
-           "at": time.strftime("%F %T"), "log_tail": tail if pr_url is None else None}
+           "at": time.strftime("%F %T"), "log_tail": tail if pr_url is None else None,
+           **parse_cost(stdout)}
     print(f"  {status}{' -> ' + pr_url if pr_url else ''} ({seconds}s)", file=sys.stderr)
     return rec
 
@@ -116,6 +100,10 @@ def main() -> int:
     # personal `gh` session happens to run the sweep — keeps all campaign
     # forks/PRs in one maintained place instead of scattering them.
     env.setdefault("FORGE_FORK_ORG", "kannamma-labs")
+    # Every commit must carry this identity, not the operator's personal
+    # git identity — see _apply_forge_identity() in sandbox.py.
+    env.setdefault("FORGE_GIT_USER_NAME", "kannamalabs")
+    env.setdefault("FORGE_GIT_USER_EMAIL", "322530453+kannamalabs@users.noreply.github.com")
 
     rows = [json.loads(l) for l in CANDIDATES.read_text().splitlines() if l.strip()]
     rows = [r for r in rows if r.get("pr_ok", True)]
@@ -148,7 +136,7 @@ def main() -> int:
                 total_attempted += 1
                 if rec["status"] == "pr_raised":
                     total_ok += 1
-                clean_clone(repo, cand["number"])
+                harvest_and_clean(TMP_ROOT, LOGS_DIR, repo, cand["number"], result=rec)
             print(f"-- batch done for {repo} ({min(i + BATCH_SIZE, len(issues))}/{len(issues)}); "
                   f"pruning docker [{total_attempted}/{TOTAL_CAP} total attempted]",
                   file=sys.stderr)

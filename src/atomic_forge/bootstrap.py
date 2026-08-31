@@ -26,6 +26,7 @@ from typing import Optional
 
 from .checkpoint import BootstrapVerdict, RunCheckpointer, new_run_id
 from . import docker_env
+from .llm import LLMQuotaError
 from .stacks import all_stacks, detect_test_stack, weak_matches
 from .sandbox import RunResult, run
 
@@ -215,6 +216,16 @@ def agentic_bootstrap(project_dir, llm, *, max_steps: int = 12,
         while steps < max_steps and (time.monotonic() - started) < wall_clock_s:
             try:
                 reply = llm.chat(messages, temperature=0.0, max_tokens=400)
+            except LLMQuotaError:
+                # Distinguishable from every other LLM failure on purpose —
+                # do NOT fold this into _fail()/BootstrapVerdict.FAILED_AGENTIC
+                # the way a genuine configurator failure is below. No real
+                # bootstrap attempt was made or refuted here; the caller
+                # (fix.py's bootstrap-gate call) catches this specific type
+                # and records the honest `llm_unavailable` exit reason
+                # instead of a misleading `bootstrap_fail`. Cleanup still
+                # runs via this function's own `finally` below.
+                raise
             except Exception as e:  # noqa: BLE001 - LLM failure ends the loop, capped
                 return _fail(BootstrapVerdict.FAILED_AGENTIC.value,
                              f"configurator LLM failed after {steps} steps: {e}",

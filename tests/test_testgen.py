@@ -22,7 +22,8 @@ class ExploreForeverUnlessNudgedLLM:
         self.usage = SimpleNamespace(prompt_tokens=1, completion_tokens=1)
         self.saw_nudge_on_turn = None
 
-    def chat_with_tools(self, messages, tools, temperature=0.0, max_tokens=8192):
+    def chat_with_tools(self, messages, tools, temperature=0.0, max_tokens=8192,
+                        tool_choice="auto"):
         nudged = any(m.get("role") == "user" and "Stop exploring" in (m.get("content") or "")
                      for m in messages)
         if nudged:
@@ -57,7 +58,8 @@ def test_no_nudge_needed_if_model_writes_on_its_own(tmp_path):
             self.usage = SimpleNamespace(prompt_tokens=1, completion_tokens=1)
             self.calls = 0
 
-        def chat_with_tools(self, messages, tools, temperature=0.0, max_tokens=8192):
+        def chat_with_tools(self, messages, tools, temperature=0.0, max_tokens=8192,
+                            tool_choice="auto"):
             self.calls += 1
             if self.calls == 1:
                 return ChatTurn(content="", tool_calls=[ToolCall(
@@ -72,3 +74,100 @@ def test_no_nudge_needed_if_model_writes_on_its_own(tmp_path):
 
     assert (tmp_path / "test_forge_gen.py").exists()
     assert result["turns"] == 2
+
+
+class IgnoresTheNudgeLLM:
+    """Round-3 RCA (sphinx#14656, sphinx#14625, urllib3#5164, confirmed
+    live against glm-5.2:cloud): a model that reads the turn-9 nudge and
+    keeps exploring anyway, right through the final turn too — the text
+    nudge alone doesn't guarantee anything. Only complies once tool_choice
+    forces write_file specifically."""
+
+    def __init__(self):
+        self.usage = SimpleNamespace(prompt_tokens=1, completion_tokens=1)
+        self.tool_choices_seen = []
+
+    def chat_with_tools(self, messages, tools, temperature=0.0, max_tokens=8192,
+                        tool_choice="auto"):
+        self.tool_choices_seen.append(tool_choice)
+        if isinstance(tool_choice, dict):
+            name = tool_choice["function"]["name"]
+            return ChatTurn(content="", tool_calls=[ToolCall(
+                id="w1", name=name,
+                arguments=json.dumps({"path": "test_forge_gen.py",
+                                      "content": "def test_x():\n    assert False\n"}))])
+        return ChatTurn(content="", tool_calls=[ToolCall(
+            id="s1", name="search_symbol", arguments=json.dumps({"name": "foo"}))])
+
+
+def test_forced_tool_choice_on_final_turn_when_nudge_is_ignored(tmp_path):
+    """A model that ignores the soft nudge entirely (the actual sphinx/
+    urllib3 failure mode — 10 turns, 0 writes) must still produce a test:
+    the last turn forces tool_choice to write_file specifically, so the
+    model has no way to keep exploring instead."""
+    llm = IgnoresTheNudgeLLM()
+    result = generate_regression_test(
+        llm, FakeBridge(), tmp_path, "test_forge_gen.py",
+        bug_description="something is broken", max_turns=10)
+
+    assert (tmp_path / "test_forge_gen.py").exists()
+    assert result["generated"].strip() != ""
+    # first 9 turns unforced, only the last is forced
+    assert llm.tool_choices_seen[:9] == ["auto"] * 9
+    assert llm.tool_choices_seen[9] == {"type": "function", "function": {"name": "write_file"}}
+
+
+class IgnoresForcedToolChoiceLLM:
+    """Round-3 RCA (celery/celery#10102, confirmed live against Ollama
+    Cloud's glm-5.2:cloud): a forced tool_choice is not honored by every
+    provider — the live probe returned a `view_file` call anyway, and with
+    tool_choice="required" and only write_file in the tools list, it
+    returned ZERO tool calls (finish_reason "stop"). This double emulates
+    that: forced tool_choice is ignored just like "auto" would be."""
+
+    def __init__(self):
+        self.usage = SimpleNamespace(prompt_tokens=1, completion_tokens=1)
+        self.chat_called_with = None
+
+    def chat_with_tools(self, messages, tools, temperature=0.0, max_tokens=8192,
+                        tool_choice="auto"):
+        return ChatTurn(content="", tool_calls=[ToolCall(
+            id="s1", name="search_symbol", arguments=json.dumps({"name": "foo"}))])
+
+    def chat(self, messages, temperature=0.0, max_tokens=8192):
+        self.chat_called_with = messages
+        return "def test_reproduces_bug():\n    assert False\n"
+
+
+def test_plain_text_fallback_when_forced_tool_choice_is_also_ignored(tmp_path):
+    """Even the forced tool_choice from the previous fix can't be relied
+    on — confirmed live. The true last resort is a plain chat() call (no
+    tools at all), which the model can't decline to answer in prose the
+    same way, and which produced valid content on every live probe."""
+    llm = IgnoresForcedToolChoiceLLM()
+    result = generate_regression_test(
+        llm, FakeBridge(), tmp_path, "test_forge_gen.py",
+        bug_description="something is broken", max_turns=3)
+
+    assert (tmp_path / "test_forge_gen.py").exists()
+    assert "assert False" in result["generated"]
+    assert llm.chat_called_with is not None  # the fallback path actually ran
+
+
+def test_plain_text_fallback_rejects_non_python_reply(tmp_path):
+    """A fallback reply that isn't valid Python must be discarded, not
+    written as a broken 'generated' test — better to correctly report
+    no_test_generated than to write garbage that fails for a confusing,
+    unrelated reason three steps later."""
+    class RepliesWithProseLLM(IgnoresForcedToolChoiceLLM):
+        def chat(self, messages, temperature=0.0, max_tokens=8192):
+            self.chat_called_with = messages
+            return "I'll start by looking at the relevant files."
+
+    llm = RepliesWithProseLLM()
+    result = generate_regression_test(
+        llm, FakeBridge(), tmp_path, "test_forge_gen.py",
+        bug_description="something is broken", max_turns=3)
+
+    assert not (tmp_path / "test_forge_gen.py").exists()
+    assert result["generated"] == ""

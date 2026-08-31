@@ -83,6 +83,11 @@ Verified fixes landed and PR'd so far:
 | [pylint-dev/astroid](https://github.com/pylint-dev/astroid) | [#3259](https://github.com/pylint-dev/astroid/issues/3259) | [astroid#3262](https://github.com/pylint-dev/astroid/pull/3262) | personal fork | open |
 | [pylint-dev/astroid](https://github.com/pylint-dev/astroid) | [#3258](https://github.com/pylint-dev/astroid/issues/3258) | [astroid#3263](https://github.com/pylint-dev/astroid/pull/3263) | personal fork | open |
 | [pylint-dev/astroid](https://github.com/pylint-dev/astroid) | [#3257](https://github.com/pylint-dev/astroid/issues/3257) | [astroid#3264](https://github.com/pylint-dev/astroid/pull/3264) | personal fork | open |
+| [psf/black](https://github.com/psf/black) | [#5214](https://github.com/psf/black/issues/5214) | [black#5370](https://github.com/psf/black/pull/5370) | personal fork (`arunsoman`) | open |
+| [psf/black](https://github.com/psf/black) | [#5260](https://github.com/psf/black/issues/5260) | [black#5371](https://github.com/psf/black/pull/5371) | personal fork (`arunsoman`) | open |
+| [psf/black](https://github.com/psf/black) | [#5328](https://github.com/psf/black/issues/5328) | [black#5372](https://github.com/psf/black/pull/5372) | personal fork (`arunsoman`) | open |
+| [python-trio/trio](https://github.com/python-trio/trio) | [#3279](https://github.com/python-trio/trio/issues/3279) | [trio#3498](https://github.com/python-trio/trio/pull/3498) | personal fork (`arunsoman`) | open |
+| [Rapptz/discord.py](https://github.com/Rapptz/discord.py) | [#10358](https://github.com/Rapptz/discord.py/issues/10358) | [discord.py#10507](https://github.com/Rapptz/discord.py/pull/10507) | personal fork (`arunsoman`) | closed by maintainer within seconds, citing the repo's own blanket AI-contribution ban — not a quality rejection; not resubmitted, see `campaign_log.md` |
 
 (The babel/tenacity PRs were originally opened from a personal fork,
 then migrated to org-owned forks under `kannamma-labs` — same commits,
@@ -91,7 +96,10 @@ to their replacements. loguru's PR predates the org migration and was
 left as-is once the maintainer closed it, out of respect for that
 decision. The astroid PRs are on a personal fork because the
 `kannamma-labs`-equivalent account hit GitHub's new-account fork-velocity
-throttle mid-campaign — see `campaign_log.md`.)
+throttle mid-campaign — see `campaign_log.md`. The round-3 PRs (black,
+trio, discord.py) fork under the operator's own personal GitHub account
+directly — `kannamma-labs` is not used for round 3 at all, see
+`real_issues/run_round3.py`'s docstring.)
 
 Several real forge bugs were found and fixed along the way (see
 `campaign_log.md` for the full root-cause writeups): a base-image picker
@@ -106,6 +114,21 @@ suspect, and a relative `--repro` path resolving against the wrong
 working directory. All covered by regression tests
 (`tests/test_bootstrap_agentic.py`, `tests/test_spectrum.py`,
 `tests/test_repair_agent.py`, `tests/test_cli_fix.py`).
+
+Round 3 found a further batch, all from the same underlying class — a soft
+LLM instruction with no structural guarantee of compliance, or a fixed
+generic assumption in place of reading what a project actually declares —
+across `agent.py`'s main repair loop (not just `testgen.py`'s test-writer),
+Python/Rust/C++ bootstrap dependency detection, and a proper `LLMQuotaError`
+distinguishing a real repair failure from an LLM-provider quota outage
+(previously misclassified as `repair_exhausted`/`bootstrap_fail` — 32 of 34
+logged round-3 failures at one point were purely a quota outage, zero real
+signal). Separately, `Rapptz/discord.py`'s closure above surfaced that
+several major projects (`discord.py`, `pytest`, `pip-tools`, `networkx`)
+now explicitly ban an unattended-agent PR with no human review before
+submission — exactly what `--raise-pr` does. `real_issues/sweep_lib.py`'s
+`check_ai_policy()` now greps a repo's own contribution doc for this before
+spending any attempt on it. See `campaign_log.md` for the full writeup.
 
 ## Adding a case
 

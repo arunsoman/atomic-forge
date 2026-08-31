@@ -19,12 +19,23 @@ Uses forge's own `OpenAICompatLLM.chat_with_tools` (no second LLM client).
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
 
 from .llm import OpenAICompatLLM
+
+
+def _strip_code_fence(text: str) -> str:
+    """A plain-text fallback call asked NOT to use a markdown fence still
+    sometimes wraps its answer in one anyway. Strip a single fenced block
+    if the whole response is exactly one; otherwise return as-is (never
+    guess at a partial/nested fence)."""
+    text = text.strip()
+    m = re.match(r"^```[a-zA-Z]*\n(.*)\n```$", text, re.DOTALL)
+    return m.group(1) if m else text
 
 # CIE graph tool schemas offered to the test-gen agent (the grounding surface).
 CIE_TOOLS = [
@@ -143,12 +154,23 @@ def generate_regression_test(llm: OpenAICompatLLM, bridge, project_dir: Path,
                 "write_file NOW with the regression test, using what you've already "
                 "learned about the code. If write_file is not called this turn, no "
                 "test will be generated and this entire attempt fails."})
+        # Round-3 RCA (sphinx#14656, sphinx#14625, urllib3#5164): the text
+        # nudge above is a request, not a guarantee — the model read it and
+        # kept calling search_symbol/view_file anyway, on both the nudged
+        # turn AND the final turn, burning the whole budget with nothing
+        # ever written. On the actual last turn, stop asking: force the
+        # API's own tool_choice to write_file specifically, so the model is
+        # structurally unable to call anything else this turn.
+        tool_choice: object = "auto"
+        if turns == max_turns and not wrote_file:
+            tool_choice = {"type": "function", "function": {"name": "write_file"}}
         # max_tokens must clear a reasoning model's thinking head (qwen3.5 et
         # al. burn thousands of tokens on <think> before emitting content or
         # tool calls; 2048 starved every turn into an empty, tool-less reply
         # -> "no regression test generated"). 16384 matches the generation-loop
         # convention (generate_batch_agentic uses 32768 for the bigger batch).
-        turn = llm.chat_with_tools(messages, tools, temperature=0.2, max_tokens=16384)
+        turn = llm.chat_with_tools(messages, tools, temperature=0.2, max_tokens=16384,
+                                   tool_choice=tool_choice)
         calls += 1
         tokens += (llm.usage.prompt_tokens + llm.usage.completion_tokens) if False else 0  # tracked on llm.usage
         assistant = {"role": "assistant", "content": turn.content or ""}
@@ -181,6 +203,44 @@ def generate_regression_test(llm: OpenAICompatLLM, bridge, project_dir: Path,
             print(f"  [testgen] t{turns}: {name} -> {len(result)} chars", flush=True)
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": result[:6000]})
     generated = (project_dir / test_rel).read_text() if (project_dir / test_rel).exists() else ""
+
+    if not generated:
+        # Round-3 RCA (celery/celery#10102, confirmed live 2026-08-31):
+        # forcing tool_choice to write_file specifically is NOT honored by
+        # every provider. Confirmed via a direct API probe: Ollama Cloud's
+        # glm-5.2:cloud silently ignores a forced tool_choice — including
+        # the weaker tool_choice="required" with only write_file in the
+        # tools list — and can still return zero tool calls, finish_reason
+        # "stop". Tool-calling compliance cannot be the only last resort.
+        # Fall back to a PLAIN chat() call (no tools at all) asking for the
+        # raw file content as text — verified live: this reliably produces
+        # exactly the requested content, since there is no tool call for
+        # the model to decline to make.
+        fallback_messages = messages + [{"role": "user", "content":
+            "Turn budget is exhausted. Reply with ONLY the complete Python source "
+            "of the test file — your ENTIRE reply must be valid, executable Python, "
+            "nothing else. Do not narrate, do not say what you're about to do, do "
+            "not use a markdown code fence. The first character of your reply must "
+            "be the first character of the file (an import or a comment)."}]
+        text = _strip_code_fence(llm.chat(fallback_messages, temperature=0.2, max_tokens=16384))
+        calls += 1
+        try:
+            compile(text, test_rel, "exec")
+            valid_python = True
+        except SyntaxError:
+            valid_python = False
+        if text.strip() and valid_python:
+            target = project_dir / test_rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text)
+            generated = text
+            trace.append({"turn": turns + 1, "tool": "fallback_plain_write", "result_len": len(text)})
+            print(f"  [testgen] fallback: plain-text write -> {len(text)} chars", flush=True)
+        else:
+            trace.append({"turn": turns + 1, "tool": "fallback_plain_write_rejected",
+                          "result_len": len(text)})
+            print(f"  [testgen] fallback: plain-text reply wasn't valid Python, discarded "
+                  f"({len(text)} chars)", flush=True)
     usage = getattr(llm, "usage", None)
     return {"generated": generated, "turns": turns, "calls": calls,
             "tokens": (usage.prompt_tokens + usage.completion_tokens) if usage else 0,

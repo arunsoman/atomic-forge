@@ -2,6 +2,7 @@
 from pathlib import Path
 
 from atomic_forge import cli, llm
+from atomic_forge.llm import LLMQuotaError
 
 from _helpers import ScriptedChatLLM
 
@@ -37,3 +38,31 @@ def test_fix_resolves_a_relative_repro_path_to_absolute(monkeypatch, tmp_path):
     assert rc == 0
     assert captured["repro"] == (tmp_path / relative_repro).resolve()
     assert captured["repro"].is_absolute()
+
+
+def test_cli_top_level_catches_llm_quota_error_without_crashing(monkeypatch, tmp_path, capsys):
+    """Safety net for every phase OTHER than fix/fix-comment (which
+    already get a clean result dict from _run_fix_pipeline's own
+    LLMQuotaError handling — see test_fix.py): `run`/`generate`/`qa`/
+    `repair`/`decompose`/`watch` have no exit_audit of their own, but an
+    LLM call exhausting its retries against a quota wall there must still
+    print something recognizable and exit cleanly, not crash with a raw
+    Python traceback (see llm.py's LLMQuotaError docstring)."""
+    monkeypatch.setenv("FORGE_MOCK", "1")
+    llm.set_mock_factory(lambda: ScriptedChatLLM(["SUBMIT"]))
+
+    spec_file = tmp_path / "spec.md"
+    spec_file.write_text("some spec text")
+
+    import atomic_forge.cli as C
+
+    def _boom(spec_text, llm_obj):
+        raise LLMQuotaError("LLM call failed after 4 retries: Error code: 429 - "
+                            "session usage limit reached")
+    monkeypatch.setattr(C, "decompose_spec", _boom)
+
+    rc = cli.main(["decompose", "--spec", str(spec_file)])
+
+    assert rc == 3
+    err = capsys.readouterr().err
+    assert "quota" in err.lower() or "rate-limit" in err.lower()

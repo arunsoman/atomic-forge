@@ -16,6 +16,8 @@ import venv as _venv
 from pathlib import Path
 from typing import Optional
 
+from .stacks import pyproject_extras
+
 _ISSUE_URL_RE = re.compile(
     r"^https?://github\.com/(?P<owner>[^/\s]+)/(?P<repo>[^/\s]+)/issues/(?P<num>\d+).*$",
     re.IGNORECASE,
@@ -215,7 +217,18 @@ def clone_repo(owner: str, repo: str, dest: Path, depth: int = 1) -> Path:
 
 def _detect_install_cmd(project_dir: Path) -> Optional[str]:
     if (project_dir / "pyproject.toml").exists() or (project_dir / "setup.py").exists():
-        return "pip install -e .[dev]"
+        # `.[dev]` alone is a fixed, generic guess at ONE conventional extra
+        # name — the same "assume instead of ask the project" gap
+        # stacks.py's `_PythonStack` used to have (urllib3#5107: the bug
+        # lived behind the `secure` extra, not `dev`). pip only warns (never
+        # fails) on an extra a project doesn't declare — confirmed empirically
+        # ("WARNING: <pkg> does not provide the extra 'dev'", exit 0) — so
+        # union in every extra `pyproject.toml` actually declares alongside
+        # the old `dev` guess: free for repos with no matching extra, and
+        # closes the gap for repos whose optional/test-relevant code lives
+        # behind a differently-named one.
+        extras = {"dev"} | set(pyproject_extras(project_dir))
+        return f"pip install -e '.[{','.join(sorted(extras))}]'"
     if (project_dir / "requirements.txt").exists():
         return "pip install -r requirements.txt"
     return None

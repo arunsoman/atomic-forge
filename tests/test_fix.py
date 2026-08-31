@@ -472,3 +472,131 @@ def test_run_fix_test_not_reproducing_records_exit_audit(monkeypatch, fake_repo)
     from atomic_forge.exit_audit import read_exits
     exits = read_exits(fake_repo)
     assert exits[-1]["reason"] == "test_not_reproducing"
+
+
+# --------------------------------------------- LLMQuotaError (core-library gap)
+#
+# Confirmed live 2026-08-30/31: testgen's/repair's underlying LLM call
+# raising a plain RuntimeError after exhausting its retries against an
+# Ollama Cloud quota wall used to crash the WHOLE process uncaught — no
+# exit_audit row at all — and, had it been caught anywhere generically,
+# would have been silently recorded as a real repair/testgen failure. 32
+# of 34 logged repair_fail/bootstrap_fail campaign attempts were this
+# exact condition. These tests prove the fix at the CORE library level
+# (llm.py's LLMQuotaError, caught in fix.py's `_run_fix_pipeline`), not
+# just in the campaign script that classifies a subprocess's stdout.
+
+def test_run_fix_testgen_llm_quota_error_is_caught_cleanly(monkeypatch, fake_repo):
+    """The LLM failure happens inside testgen's own agent loop
+    (generate_regression_test) — must not crash run_fix, must record the
+    honest `llm_unavailable` exit reason (never `repair_exhausted` or an
+    uncaught traceback), and must never raise a PR."""
+    import atomic_forge.fix as F
+    from atomic_forge.llm import LLMQuotaError
+    raised = _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
+
+    def _quota_boom(llm, br, pd, tr, bug, max_turns=10):
+        raise LLMQuotaError("LLM call failed after 4 retries: Error code: 429 - session usage limit")
+    monkeypatch.setattr(F, "generate_regression_test", _quota_boom)
+
+    ib = fake_repo / "issue.txt"; ib.write_text("bug")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=ib, dry_run=True)
+
+    assert r["success"] is False
+    assert r["stage"] == "llm"
+    assert "quota" in r["reason"].lower() or "rate-limit" in r["reason"].lower()
+    assert raised["called"] is False  # never got near raising a PR
+
+    from atomic_forge.exit_audit import read_exits
+    exits = read_exits(fake_repo)
+    assert exits[-1]["reason"] == "llm_unavailable"
+    assert exits[-1]["reason"] != "repair_exhausted"
+
+
+def test_run_fix_repair_loop_llm_quota_error_is_caught_cleanly(monkeypatch, fake_repo):
+    """The LLM failure happens deep inside the repair loop's own agentic
+    sampling (repair_loop_agentic) — the highest-stakes site, since it's
+    the most expensive part of the pipeline. Must not be conflated with
+    `repair_exhausted` (which implies a REAL repair attempt ran out of
+    rounds using working LLM calls — false here: no real attempt was
+    made)."""
+    import atomic_forge.fix as F
+    from atomic_forge.llm import LLMQuotaError
+    raised = _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
+
+    def _quota_boom(pd, llm, tools, traj, **kw):
+        raise LLMQuotaError("LLM call failed after 4 retries: Error code: 429 - rate limit exceeded")
+    monkeypatch.setattr(F, "repair_loop_agentic", _quota_boom)
+
+    ib = fake_repo / "issue.txt"; ib.write_text("bug")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=ib, dry_run=True)
+
+    assert r["success"] is False
+    assert r["stage"] == "llm"
+    assert raised["called"] is False
+
+    from atomic_forge.exit_audit import read_exits
+    exits = read_exits(fake_repo)
+    assert exits[-1]["reason"] == "llm_unavailable"
+    assert exits[-1]["reason"] != "repair_exhausted"
+
+
+def test_run_fix_bootstrap_gate_llm_quota_error_is_caught_cleanly(monkeypatch, tmp_path):
+    """The R16c agentic bootstrap fallback's own configurator LLM call can
+    hit the same quota wall, on a cold-clone path (BEFORE the main
+    testgen/repair try-block even starts) — must be caught there too,
+    with `stage: bootstrap` + `llm_unavailable`, never a raw crash and
+    never `bootstrap_fail` (which would misleadingly imply the checkout
+    genuinely couldn't be bootstrapped)."""
+    import atomic_forge.fix as F
+    import atomic_forge.bootstrap as B
+    from atomic_forge.llm import LLMQuotaError
+
+    def _fake_clone(owner, repo, dest):
+        dest = Path(dest)
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "mod.py").write_text("x = 1\n")
+        _git_init(dest)
+    monkeypatch.setattr(F, "clone_repo", _fake_clone)
+
+    def _boom(project_dir, timeout=600, on_progress=None, db_path=None, llm=None, allow_agentic=False):
+        raise LLMQuotaError("LLM call failed after 4 retries: Error code: 429")
+    monkeypatch.setattr(B, "run_bootstrap_gate", _boom)
+
+    ib = tmp_path / "issue.txt"; ib.write_text("bug")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  work_root=tmp_path / "work", issue_body_file=ib, dry_run=True)
+
+    assert r["success"] is False
+    assert r["stage"] == "bootstrap"
+    assert "quota" in r["reason"].lower() or "rate-limit" in r["reason"].lower()
+
+    from atomic_forge.exit_audit import read_exits
+    project_dir = tmp_path / "work" / "r-1"
+    exits = read_exits(project_dir)
+    assert exits[-1]["reason"] == "llm_unavailable"
+    assert exits[-1]["reason"] != "bootstrap_fail"
+
+
+def test_run_fix_non_quota_runtime_error_still_propagates(monkeypatch, fake_repo):
+    """A plain (non-quota) RuntimeError from anywhere in the pipeline must
+    NOT be caught by the new LLMQuotaError handling — only the
+    specifically-classified quota/rate-limit condition gets the honest
+    llm_unavailable treatment; every other exception keeps its old,
+    loud, uncaught behavior."""
+    import atomic_forge.fix as F
+    _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
+
+    def _boom(llm, br, pd, tr, bug, max_turns=10):
+        raise RuntimeError("some unrelated real bug in testgen")
+    monkeypatch.setattr(F, "generate_regression_test", _boom)
+
+    ib = fake_repo / "issue.txt"; ib.write_text("bug")
+    with pytest.raises(RuntimeError, match="unrelated real bug"):
+        F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                 project_dir=fake_repo, issue_body_file=ib, dry_run=True)
+    from atomic_forge.exit_audit import read_exits
+    exits = read_exits(fake_repo)
+    assert not exits or exits[-1]["reason"] != "llm_unavailable"

@@ -67,6 +67,87 @@ def weak_matches(root: Path) -> set[str]:
 
 # --------------------------------------------------------------- python ----
 
+def _pep621_or_poetry_extras(root: Path) -> set:
+    pyproject = root / "pyproject.toml"
+    if not pyproject.exists():
+        return set()
+    try:
+        import tomllib
+        data = tomllib.loads(pyproject.read_text())
+    except Exception:
+        return set()
+    extras = set((data.get("project") or {}).get("optional-dependencies") or {})
+    extras |= set(((data.get("tool") or {}).get("poetry") or {}).get("extras") or {})
+    return extras
+
+
+def _setup_py_extras(root: Path) -> set:
+    """Extra names from a classic `setup.py`'s `extras_require={...}`
+    kwarg — read via AST, NEVER executed (arbitrary code in an untrusted
+    checkout; only the dict literal's string KEYS are needed to build
+    `.[name1,name2]`, regardless of how each extra's value list is
+    constructed — kombu builds each list from a helper call, not a literal,
+    which this only needs to skip over, not evaluate). Confirmed live
+    (celery/kombu#2582 RCA): kombu declares `redis` (among others) exactly
+    this way, with no `pyproject.toml` optional-dependencies table at
+    all — `_pep621_or_poetry_extras` alone misses it completely."""
+    setup_py = root / "setup.py"
+    if not setup_py.exists():
+        return set()
+    try:
+        import ast
+        tree = ast.parse(setup_py.read_text())
+    except (SyntaxError, ValueError):
+        return set()
+    extras: set = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.keyword) and node.arg == "extras_require" \
+                and isinstance(node.value, ast.Dict):
+            for key in node.value.keys:
+                if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                    extras.add(key.value)
+    return extras
+
+
+def _setup_cfg_extras(root: Path) -> set:
+    """Extra names from a classic `setup.cfg`'s
+    `[options.extras_require]` section — plain INI, no execution risk."""
+    setup_cfg = root / "setup.cfg"
+    if not setup_cfg.exists():
+        return set()
+    try:
+        import configparser
+        cp = configparser.ConfigParser()
+        cp.read_string(setup_cfg.read_text())
+    except Exception:
+        return set()
+    if not cp.has_section("options.extras_require"):
+        return set()
+    return set(cp.options("options.extras_require"))
+
+
+def pyproject_extras(root: Path) -> List[str]:
+    """Every extra a project declares, across every manifest format it
+    might use: PEP 621 `[project.optional-dependencies]` or legacy Poetry
+    `[tool.poetry.extras]` (`pyproject.toml`), a classic `setup.py`'s
+    `extras_require={...}` kwarg, or `setup.cfg`'s
+    `[options.extras_require]`. Not filtered to "test"-sounding names on
+    purpose: a generated regression test can need ANY optional integration
+    the bug itself lives in (urllib3#5107 needed `secure` — pyOpenSSL —
+    because the bug is in urllib3.contrib.pyopenssl, nothing about
+    "testing" names that extra).
+
+    Module-level (not just a `_PythonStack` method) so every other caller
+    that bootstraps a Python checkout — `issue.py`'s separate `fix`-command
+    venv setup included — reads the SAME source of truth instead of
+    re-guessing its own fixed extra name. (Name kept as `pyproject_extras`
+    for every existing caller/test even though it now reads more than
+    `pyproject.toml` — renaming would touch call sites for no behavioral
+    benefit.)"""
+    extras = _pep621_or_poetry_extras(root) | _setup_py_extras(root) | _setup_cfg_extras(root)
+    return sorted(extras)
+
+
 class _PythonStack:
     name = "python"
 
@@ -74,6 +155,9 @@ class _PythonStack:
 
     def _requirements_files(self, root: Path) -> List[Path]:
         return [root / name for name in self._REQUIREMENTS if (root / name).exists()]
+
+    def _declared_extras(self, root: Path) -> List[str]:
+        return pyproject_extras(root)
 
     def detect(self, root: Path) -> bool:
         return bool(
@@ -96,7 +180,21 @@ class _PythonStack:
             # whatever happens to be on this process's own PATH, which
             # silently skips every one of the project's own declared deps.
             req_flags = " ".join(f"-r {r.relative_to(root)}" for r in reqs)
-            install = f"{venv_pip} install -q {req_flags} pytest pytest-asyncio"
+            base_install = f"{venv_pip} install -q {req_flags} pytest pytest-asyncio"
+            # requirements.txt pins CI deps but real projects routinely ALSO
+            # keep a pyproject.toml with its own extras for optional
+            # integrations requirements.txt never mentions (the same shape
+            # urllib3#5107 hit: a fixed install list with no view of what
+            # the project itself declares optional). Root-level only —
+            # matches _declared_extras' own scope, same as the pyproject-only
+            # branch below.
+            extras = self._declared_extras(root)
+            if extras:
+                extras_spec = f".[{','.join(extras)}]"
+                install = (f"({venv_pip} install -q {req_flags} -e '{extras_spec}' "
+                           f"pytest pytest-asyncio || {base_install})")
+            else:
+                install = base_install
         elif (root / "pyproject.toml").exists() or (root / "backend" / "pyproject.toml").exists():
             # No requirements.txt: pyproject.toml (poetry/hatch/setuptools)
             # is the only declared dependency source. A bare `python -m
@@ -110,8 +208,28 @@ class _PythonStack:
             # project editable + a curated set of the pytest plugins most
             # commonly wired into addopts covers both.
             pyroot = "." if (root / "pyproject.toml").exists() else "backend"
-            install = (f"{venv_pip} install -q -e {pyroot} pytest pytest-asyncio "
-                       f"pytest-cov pytest-xdist pytest-mock pytest-timeout")
+            generic_plugins = ("pytest pytest-asyncio pytest-cov pytest-xdist "
+                                "pytest-mock pytest-timeout")
+            # Round-3 RCA (urllib3#5107, ipython#15359/#15379): the curated
+            # list above is a guess at what pytest itself needs — it says
+            # nothing about what the PROJECT's own code needs to import. A
+            # regression test that exercises an optional integration (e.g.
+            # urllib3.contrib.pyopenssl) or the project's own conventional
+            # test dependency (e.g. ipython's `testpath`) collection-crashes
+            # with ModuleNotFoundError and gets misread as "doesn't
+            # reproduce" — the test was never able to run at all. Only the
+            # project's own pyproject.toml actually knows what it needs, so
+            # install every extra it declares; if that fails (a heavy/broken
+            # extra needing system libs we don't have), fall back to the
+            # plain install rather than let bootstrap fail outright.
+            extras = self._declared_extras(root if pyroot == "." else root / "backend")
+            base_install = f"{venv_pip} install -q -e {pyroot} {generic_plugins}"
+            if extras:
+                extras_spec = f"{pyroot}[{','.join(extras)}]"
+                install = (f"({venv_pip} install -q -e '{extras_spec}' {generic_plugins} "
+                           f"|| {base_install})")
+            else:
+                install = base_install
         else:
             return "python -m pytest -q --continue-on-collection-errors"
         setup = (
@@ -245,12 +363,55 @@ class _GoStack:
 class _RustStack:
     name = "rust"
 
+    def _declares_optional_features(self, root: Path) -> bool:
+        """True if this crate's own Cargo.toml declares ANY non-default
+        feature or `optional = true` dependency. `cargo test` alone only
+        builds the DEFAULT feature set — the same "fixed generic install,
+        blind to what the project itself declares optional" gap urllib3#5107
+        exposed for Python extras: a regression test exercising code gated
+        behind a non-default feature (a common crate shape — e.g. an
+        optional backend/integration wired through `dep:foo` in
+        `[features]`, or a dependency marked `optional = true` directly)
+        never even compiles under a bare `cargo test`. Malformed/missing
+        Cargo.toml — or no tomllib (< 3.11) — means "nothing declared", not
+        a crash: same fail-open discipline as `_PythonStack._declared_extras`."""
+        cargo_toml = root / "Cargo.toml"
+        if not cargo_toml.exists():
+            return False
+        try:
+            import tomllib
+            data = tomllib.loads(cargo_toml.read_text())
+        except Exception:
+            return False
+        features = data.get("features")
+        if isinstance(features, dict) and any(f != "default" for f in features):
+            return True
+        for section in ("dependencies", "dev-dependencies", "build-dependencies"):
+            deps = data.get(section)
+            if not isinstance(deps, dict):
+                continue
+            for spec in deps.values():
+                if isinstance(spec, dict) and spec.get("optional") is True:
+                    return True
+        return False
+
     def detect(self, root: Path) -> bool:
         return (root / "Cargo.toml").exists()
 
     def test_command(self, root: Path) -> Optional[str]:
         if not self.detect(root):
             return None
+        if self._declares_optional_features(root):
+            # Probe compilation with every feature enabled as its own step
+            # (discarded output, no test execution) so a broken/heavy
+            # feature (needs an unavailable system lib) can't ever mask a
+            # REAL test failure: the eventual `cargo test` call — whichever
+            # branch runs — executes exactly once, so its exit code (0 pass,
+            # 101 a real failure) is never swallowed by a second run the way
+            # a bare `A && B || C` would (B failing would silently re-trigger
+            # C and report C's exit code instead of B's).
+            return ("if cargo build --all-features --tests -q >/dev/null 2>&1; "
+                    "then cargo test --all-features; else cargo test; fi")
         return "cargo test"
 
     def is_test_file(self, path: str) -> bool:
@@ -336,8 +497,17 @@ class _CppStack:
 
     def test_command(self, root: Path) -> Optional[str]:
         if self._is_cmake(root) and self._cmake_declares_tests(root):
+            # `_cmake_declares_tests` finds the marker text anywhere in the
+            # tree, including inside an `if(BUILD_TESTING) ... endif()`
+            # guard — the standard CTest-provided option (from
+            # `include(CTest)`, defaults ON but some projects flip that
+            # default) that must be explicitly ON for the marker to
+            # actually take effect. Same "read what the project declares"
+            # gap as the extras fixes below: passing it unconditionally is
+            # a no-op for projects that don't use it (unused cache
+            # variable) and closes the false-negative for ones that do.
             return (
-                "cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug"
+                "cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON"
                 " && cmake --build build -j"
                 " && ctest --test-dir build --output-on-failure"
             )
