@@ -50,29 +50,40 @@ way there already.
 
 ## Track B — publish the campaign that's already running
 
-`Evaluation-Plan.md` still says the 40–60-issue real-issues set and
-baseline runs are "planned." They're not — `campaign50_targets.json`
-already targets 18 repos, and the astroid round already landed **4 real
-merged-quality PRs** (fuzzer-found crashes, #3261–#3264) with genuine
-engineering findings along the way (statement-level spectrum localization
-fix, contaminated passing-sample coverage, multi-file patch targeting).
-That's a stronger opening story than a demo repo.
+Turned out to be bigger than either the original draft or the first pass
+of this page knew: **three separate unpublished eval streams** existed in
+the repo (the original 4/4 harness, campaign50/astroid, and sweep
+round2+round3 — the last one alone is 102 attempts across ~20 repos and
+was not reflected anywhere in the wiki). Reconciled into
+`benchmarks/real_issues/RESULTS.md` — commit `c20d3e1`.
 
-1. Finish the current campaign50 pass (or a clean subset of it) to the
-   point it's write-up-able — you're already at or past the "10–15 issues
-   is enough to publish early" bar the Evaluation-Plan itself sets.
-2. Write it up: methodology, per-case outcome, the engineering findings
-   above (they're good marketing on their own — real bugs found in your
-   own fault-localization and patch pipeline, fixed, regression-tested).
-3. ✅ Updated `Evaluation-Plan.md`'s ledger table to reflect actual status
-   (astroid PRs raised + independently re-verified, not "planned"; the
-   40–60-issue target already scaled to 18 repos via campaign50; the one
-   fully-logged ledger run — astroid#769, a real failure case — kept
-   visible rather than hidden). Full write-up with reconciled ledger still
-   needed before this is a publishable result, not just a status update.
-4. Only after this exists: SWE-bench Verified harness, baselines (aider,
-   agent modes), ablations (graph, blast-radius gate, K) — these were
-   already correctly scoped as later milestones.
+1. ✅ Reconciled all three streams: **103 tracked attempts across ~20
+   repos, 12 PRs raised, 0 merged so far** (10 open, 2 closed without
+   merge). Outcome distribution reported honestly, not just the raise
+   count: ~32% oracle_reject, ~32% repair_fail, ~22% infra_fail, ~12%
+   pr_raised. infra/bootstrap failure is the single largest bucket — a
+   bigger lever right now than repair-loop tuning.
+2. ✅ Write-up done (`RESULTS.md`) — methodology per stream, live PR
+   status (checked via `gh`, not stale log claims), the honest headline
+   ("0 merged" is the number to lead with, not "12 raised").
+3. ✅ Updated `Evaluation-Plan.md`'s ledger table to point at `RESULTS.md`
+   and match its numbers.
+4. ✅ **Found and fixed a real gap this pass surfaced**: one closed PR
+   (discord.py#10507) was closed citing the repo's written
+   AI-contributions policy — `campaign50_targets.json` documents a manual
+   "grep CONTRIBUTING for AI/LLM policy" protocol step that neither
+   `run_campaign.py` nor `sweep.py`'s pipeline actually automated, and the
+   existing `pr_writable.py` probe only catches API-level PR gates, not a
+   written-but-unenforced policy. Added `check_ai_policy()` to
+   `pr_writable.py` — verified it flags discord.py and doesn't
+   false-positive on black/trio.
+5. **Not yet done, genuinely still open**: 0 of the 12 raised PRs are
+   merged. This document needs revisiting once reviews land either way —
+   don't publish "raised" as if it were "succeeded."
+6. Only after merged results exist (or a clear rejection pattern is
+   understood): SWE-bench Verified harness, baselines (aider, agent
+   modes), ablations (graph, blast-radius gate, K) — these were already
+   correctly scoped as later milestones.
 
 ## Phase 2 — GitHub Action as primary distribution surface
 
