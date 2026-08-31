@@ -58,6 +58,12 @@ _FAIL = {"oracle_reject": "no (validated) regression test at HEAD",
                                "unrelated to fix quality (e.g. 'no commits ahead of base' — "
                                "see fix.py's forced post-verification commit, added "
                                "2026-08-31, which should make this rare going forward)",
+         "ai_policy_blocked": "fix.py's own preflight caught a written AI-contributions "
+                               "policy before any LLM spend — not a failure, curation just "
+                               "hadn't screened this candidate yet (see pr.py check_ai_policy)",
+         "issue_already_settled": "fix.py's own preflight caught a maintainer-rejected "
+                                   "non-bug before any LLM spend — same as above, curation "
+                                   "gap not a repair failure (see pr.py issue_already_settled)",
          "error": "other error"}
 
 
@@ -112,6 +118,16 @@ def classify(stdout: str) -> str:
         return "pr_mechanics_fail"
     if "upstream blocks PR creation" in stdout:
         return "pr_locked"   # maintainer-side PR gate (policy), not our failure
+    # fix.py's own preflight checks (added the same day — see pr.py
+    # check_ai_policy / issue_already_settled): caught immediately here
+    # too, sympy/sympy#30346 aborted in 8.8s citing exactly this and
+    # still landed as repair_fail because classify() had no case for the
+    # new abort text. Not our failure at all — it's the preflight
+    # working correctly, before any LLM spend.
+    if "contains an AI-contributions policy clause" in stdout:
+        return "ai_policy_blocked"
+    if "a maintainer already settled this issue" in stdout:
+        return "issue_already_settled"
     # Found live on python/mypy#21904 (round4 sweep, 2026-08-31): this used
     # to be `"bootstrap_fail" if "bootstrap" in stdout else "oracle_reject"`
     # — but "bootstrap" almost always appears SOMEWHERE in a healthy run's
