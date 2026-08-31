@@ -171,10 +171,19 @@ def test_run_fix_operator_test_that_does_not_reproduce_aborts(monkeypatch, fake_
     assert raised["called"] is False
 
 
-def test_run_fix_missing_test_file_fails_fast(fake_repo, tmp_path):
+def test_run_fix_missing_test_file_fails_fast(fake_repo, tmp_path, monkeypatch):
+    """Unlike this file's other run_fix() calls, this one never went
+    through _stub_chain's require_cie mock — harmless wherever CIE
+    happens to be pip-installed, but CI's workflow only runs
+    `pip install -e ".[dev]"` (never installs the private `cie` package),
+    so require_cie() genuinely raises there before this test's own
+    --test-file check is ever reached, turning "missing test file raises
+    FileNotFoundError" into "CIE unavailable raises RuntimeError" — a
+    real CI failure unrelated to what this test means to verify."""
     import atomic_forge.fix as F
     import pytest
     from test_fix import _DummyLLM
+    monkeypatch.setattr(F, "require_cie", lambda: None)
     with pytest.raises(FileNotFoundError):
         F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
                   project_dir=fake_repo, issue_body_file=fake_repo / "x.txt",
