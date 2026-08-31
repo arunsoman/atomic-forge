@@ -31,11 +31,30 @@ RESULTS = HERE / "sweep" / "results.jsonl"
 
 PY = sys.executable
 
+try:
+    # Reuse the same quota-vs-transient-rate-limit classifier the LLM
+    # layer itself uses (atomic_forge/llm.py), so "was this a session
+    # quota cap" is answered identically everywhere instead of two regexes
+    # silently drifting apart.
+    sys.path.insert(0, str(HERE.parent.parent / "src"))
+    from atomic_forge.llm import _is_quota_exhausted
+except ImportError:
+    def _is_quota_exhausted(e: Exception) -> bool:  # pragma: no cover - fallback only
+        return "usage limit" in str(e).lower() or "quota" in str(e).lower()
+
 # statuses we emit; never silently swallowed
 _OK = "pr_raised"
 _FAIL = {"oracle_reject": "no (validated) regression test at HEAD",
          "bootstrap_fail": "environment bootstrap exceeded caps",
          "repair_fail": "repair loop ended non-green",
+         "quota_exceeded": "LLM provider session/plan quota exhausted mid-attempt "
+                            "(not a forge-quality failure — see RESULTS.md; consider "
+                            "FORGE_MODEL_FALLBACKS)",
+         "pr_mechanics_fail": "repair succeeded and was ground-truth verified green, "
+                               "but PR creation failed for a git/GitHub-mechanics reason "
+                               "unrelated to fix quality (e.g. 'no commits ahead of base' — "
+                               "see fix.py's forced post-verification commit, added "
+                               "2026-08-31, which should make this rare going forward)",
          "error": "other error"}
 
 
@@ -53,6 +72,17 @@ def load_results(path: Path) -> set[str]:
 def classify(stdout: str) -> str:
     if "PR opened:" in stdout:
         return _OK
+    # Both checked before anything else: they're infra/mechanics signals
+    # that can appear alongside repair-loop-looking text (a quota error
+    # can interrupt testgen mid-abort-message; a mechanics failure only
+    # ever follows an actual green repair), and neither should ever be
+    # miscounted as a repair-quality failure — see RESULTS.md's finding
+    # that 13/34 sampled failures were #1 and at least one confirmed case
+    # (pylint-dev/pylint#11361) was #2.
+    if _is_quota_exhausted(RuntimeError(stdout)):
+        return "quota_exceeded"
+    if "PR creation failed after a validated fix" in stdout or "no commits ahead" in stdout:
+        return "pr_mechanics_fail"
     if "upstream blocks PR creation" in stdout:
         return "pr_locked"   # maintainer-side PR gate (policy), not our failure
     if "abort at bootstrap gate" in stdout or "abort: no regression test" in stdout:
