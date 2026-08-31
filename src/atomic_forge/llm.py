@@ -113,6 +113,22 @@ def _is_rate_limited(e: Exception) -> bool:
     return "ratelimit" in type(e).__name__.lower()
 
 
+def _is_quota_exhausted(e: Exception) -> bool:
+    """A session/plan-level cap, not a transient per-request rate limit —
+    backoff-and-retry against the SAME model is futile; the cap won't
+    clear in 30s. Found live in the real-issues campaign (2026-08-31):
+    13 of 34 sampled sweep failures were Ollama cloud's glm-5.2:cloud
+    returning "you have reached your session usage limit, upgrade for
+    higher limits" on every call, silently exhausting all 4 backoff
+    retries and then killing the whole `atomic-forge fix` attempt — all
+    of it misclassified downstream as a repair-loop failure rather than
+    an exhausted quota. See benchmarks/real_issues/RESULTS.md."""
+    msg = str(e).lower()
+    return ("usage limit" in msg or "insufficient_quota" in msg or
+            "exceeded your current quota" in msg or
+            ("quota" in msg and ("exceed" in msg or "limit" in msg)))
+
+
 @dataclass
 class OpenAICompatLLM:
     """Thin wrapper over the OpenAI chat-completions API — works against
@@ -126,6 +142,13 @@ class OpenAICompatLLM:
     usage: UsageTracker = field(default_factory=UsageTracker)
     #: Observability only, never read by the protocol.
     provider: Optional[str] = None
+    #: Models to switch to, in order, the moment `self.model` reports a
+    #: quota exhaustion (not a transient rate limit — see
+    #: _is_quota_exhausted). Sticky: once switched, stays switched for
+    #: the rest of this LLM instance's life rather than re-trying the
+    #: exhausted model on the next call. Empty by default — opt in via
+    #: FORGE_MODEL_FALLBACKS (see default_llm()).
+    fallback_models: List[str] = field(default_factory=list)
     #: Fired the instant a 429 is seen (before this attempt's backoff
     #: sleep) — lets a caller running several tasks concurrently
     #: (AdaptiveConcurrencyLimiter) react to real rate-limiting immediately
@@ -153,7 +176,9 @@ class OpenAICompatLLM:
     def chat(self, messages: List[Message], temperature: float = 0.0, max_tokens: int = 8192) -> str:
         client = self._client()
         last_err: Optional[Exception] = None
-        for attempt in range(self.max_retries):
+        budget = self.max_retries * (1 + len(self.fallback_models))
+        attempt = 0
+        while attempt < budget:
             try:
                 resp = client.chat.completions.create(
                     model=self.model, messages=messages, temperature=temperature, max_tokens=max_tokens,
@@ -162,10 +187,16 @@ class OpenAICompatLLM:
                 return resp.choices[0].message.content or ""
             except Exception as e:  # rate limits, transient 5xx, connection errors
                 last_err = e
+                attempt += 1
+                if _is_quota_exhausted(e) and self.fallback_models:
+                    old = self.model
+                    self.model = self.fallback_models.pop(0)
+                    logger.warning("chat: quota exhausted on %s, falling back to %s", old, self.model)
+                    continue  # no backoff — a session cap won't clear in 30s
                 if self.on_rate_limited is not None and _is_rate_limited(e):
                     self.on_rate_limited()
                 time.sleep(min(2 ** attempt * 2, 30))
-        raise RuntimeError(f"LLM call failed after {self.max_retries} retries: {last_err}")
+        raise RuntimeError(f"LLM call failed after {attempt} attempt(s) (model={self.model}): {last_err}")
 
     def chat_with_tools(self, messages: List[Message], tools: List[dict],
                         temperature: float = 0.0, max_tokens: int = 8192) -> ChatTurn:
@@ -175,7 +206,9 @@ class OpenAICompatLLM:
         not by a regex-based text grammar."""
         client = self._client()
         last_err: Optional[Exception] = None
-        for attempt in range(self.max_retries):
+        budget = self.max_retries * (1 + len(self.fallback_models))
+        attempt = 0
+        while attempt < budget:
             try:
                 resp = client.chat.completions.create(
                     model=self.model, messages=messages, temperature=temperature,
@@ -190,10 +223,17 @@ class OpenAICompatLLM:
                 return ChatTurn(content=msg.content or "", tool_calls=calls)
             except Exception as e:
                 last_err = e
+                attempt += 1
+                if _is_quota_exhausted(e) and self.fallback_models:
+                    old = self.model
+                    self.model = self.fallback_models.pop(0)
+                    logger.warning("chat_with_tools: quota exhausted on %s, falling back to %s",
+                                   old, self.model)
+                    continue  # no backoff — a session cap won't clear in 30s
                 if self.on_rate_limited is not None and _is_rate_limited(e):
                     self.on_rate_limited()
                 time.sleep(min(2 ** attempt * 2, 30))
-        raise RuntimeError(f"LLM call failed after {self.max_retries} retries: {last_err}")
+        raise RuntimeError(f"LLM call failed after {attempt} attempt(s) (model={self.model}): {last_err}")
 
 
 #: Set your own zero-network mock: `atomic_forge.llm.set_mock_factory(lambda: MyMockLLM())`,
@@ -273,10 +313,20 @@ def default_llm(provider_override: Optional[str] = None, local_only: bool = Fals
     forge_model = os.environ.get("FORGE_MODEL")
     if forge_key or forge_base or forge_model:
         _check_local(forge_base, "FORGE_BASE_URL")
-        logger.info("default_llm: FORGE_* override (base_url=%s, model=%s)", forge_base, forge_model)
+        # Comma-separated models to fall back to, in order, the moment the
+        # primary model reports a quota exhaustion (see
+        # _is_quota_exhausted) — not set by default; a single cloud
+        # model's session cap otherwise kills the whole attempt with no
+        # recourse (see FORGE_MODEL_FALLBACKS's use in the campaign
+        # runners, benchmarks/real_issues/sweep.py and run_campaign.py).
+        fallbacks = [m.strip() for m in
+                    os.environ.get("FORGE_MODEL_FALLBACKS", "").split(",") if m.strip()]
+        logger.info("default_llm: FORGE_* override (base_url=%s, model=%s, fallbacks=%s)",
+                   forge_base, forge_model, fallbacks or None)
         return OpenAICompatLLM(
             model=forge_model or "gpt-4o-mini", base_url=forge_base,
             api_key=forge_key or "not-needed", provider=provider_override or "forge-override",
+            fallback_models=fallbacks,
         )
 
     openai_key = os.environ.get("OPENAI_API_KEY")
