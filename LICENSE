@@ -8,7 +8,15 @@ Parameters
 Licensor:             Arun Soman
 Licensed Work:        atomic-forge 0.2.0 and later
                       The Licensed Work is (c) Arun Soman / kannamma-labs.
-Additional Use Grant: None
+Additional Use Grant: You may use the Licensed Work in production — including
+                      running it against your own or your employer's or
+                      client's codebases, in CI/CD pipelines, and via the
+                      atomic-forge GitHub Action — at no charge. A commercial
+                      license is required only if you (a) offer the Licensed
+                      Work, or a modified version of it, to third parties as
+                      a hosted or managed service, or (b) embed it in a
+                      commercial product or service that competes with a
+                      hosted offering of the Licensed Work.
 Change Date:          2030-08-29
 Change License:       GNU General Public License v3.0 or any later version
 

@@ -115,4 +115,14 @@ for inputs/outputs and worked workflows.
 
 ## License
 
-Licensed under the Business Source License 1.1 — see [LICENSE](LICENSE). Production use requires a commercial license; the code converts to GPL-3.0-or-later on 2030-08-29.
+Licensed under the Business Source License 1.1 — see [LICENSE](LICENSE).
+Free to use, including in production (your own CI, the GitHub Action,
+against your own or client codebases) — a commercial license is only
+needed if you resell atomic-forge itself as a hosted/managed service, or
+embed it in a competing commercial offering. The code converts to
+GPL-3.0-or-later on 2030-08-29.
+
+**Why BSL and not MIT/Apache?** BSL keeps the source open and lets anyone
+use, modify, and self-host forge freely — it just reserves the right to
+sell forge-as-a-service to whoever might otherwise resell your own work
+back to the community. It auto-converts to GPL-3.0 in 2030 regardless.
