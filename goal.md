@@ -45,9 +45,8 @@ way there already.
    free production use (own/client codebases, CI, the Action); a
    commercial license is now needed only to resell forge itself as a
    hosted service or embed it in a competing offering. README got a
-   matching "why BSL not MIT" FAQ line. **This LICENSE edit needs your
-   explicit sign-off before it's committed** — it's a real legal document,
-   not just docs copy.
+   matching "why BSL not MIT" FAQ line. Signed off and committed
+   (`3df25d0`).
 
 ## Track B — publish the campaign that's already running
 
