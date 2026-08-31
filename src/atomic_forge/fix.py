@@ -41,9 +41,9 @@ from .issue import (clone_repo, fetch_issue, issue_to_bug_description,
                     make_test_cmd, parse_issue_url, setup_python_env, upstream_slug)
 from .learning import run_postmortem
 from .llm import OpenAICompatLLM, _is_quota_exhausted
-from .pr import (check_ai_policy, classify_pr_create_error, default_branch_for,
-                 forge_footer, issue_already_settled, prepare_pr_branch,
-                 raise_pr_via_fork)
+from .pr import (already_has_open_pr, check_ai_policy, classify_pr_create_error,
+                 default_branch_for, forge_footer, issue_already_settled,
+                 prepare_pr_branch, raise_pr_via_fork)
 from .repair_agent import repair_loop_agentic
 from .sandbox import commit as git_commit
 from .testgen import generate_regression_test, oracle_fails_on_buggy
@@ -356,7 +356,27 @@ def _run_fix_pipeline(owner: str, repo: str, *, test_id: str, issue: dict, bug: 
     #    behavior) — only meaningful for a real issue number (0 on the
     #    review-comment-driven path), and not worth running even under
     #    --dry-run since there's nothing to preview.
+    #  - max 1 open PR per repo at a time: a documented-but-never-enforced
+    #    campaign etiquette rule (campaign50_targets.json) — 4 simultaneous
+    #    astroid PRs violated it and the account was blocked from the
+    #    pylint-dev org for it (see already_has_open_pr's docstring).
+    #    Real, not cosmetic: --dry-run still aborts here too, since piling
+    #    a second open PR onto a repo is the actual harm, and a caller who
+    #    only wants a local preview doesn't need the real upstream state
+    #    checked at all.
     if not force:
+        open_pr = already_has_open_pr(upstream)
+        if open_pr:
+            reason = (f"this account already has an open PR against {upstream}: "
+                      f"{open_pr} — aborting before any LLM spend (max 1 open PR "
+                      "per repo at a time). Pass --force to proceed anyway.")
+            print(f"[forge fix] abort: {reason}")
+            record_exit(project_dir, reason="pr_already_open", detail=reason[:500],
+                       extra={"issue": url})
+            return {"url": url, "upstream": upstream, "branch": pr_branch or pr_branch_default,
+                    "test_file": f"tests/test_forge_{test_id}.py", "success": False,
+                    "stage": "preflight", "reason": reason, **result_extra}
+
         policy_hit = check_ai_policy(upstream)
         if policy_hit and not dry_run:
             reason = (f"{upstream} {policy_hit['path']} {policy_hit['reason']} — "

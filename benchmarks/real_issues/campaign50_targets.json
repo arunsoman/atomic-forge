@@ -35,7 +35,9 @@
     {"repo": "pallets/{flask,click,werkzeug}", "reason": "no bug labels, tiny triaged backlogs; strict feature-freeze culture"},
     {"repo": "urllib3/urllib3", "encode/httpx", "faker-python/faker", "reason": "0 open native-label bugs flagged; unlabeled triage lag, hard to target by label"},
     {"repo": "psf/requests", "reason": "maintainer bandwidth; 8 open bug-labeled but slow review"},
-    {"repo": "Textualize/rich", "reason": "maintainer curates fixes internally; low external-PR merge rate"}
+    {"repo": "Textualize/rich", "reason": "maintainer curates fixes internally; low external-PR merge rate"},
+    {"repo": "pylint-dev/pylint", "reason": "BLOCKED (2026-08-31): account blocked from the pylint-dev org after 4 simultaneous astroid PRs (a single fuzzer-crash batch, #3261-#3264) violated this file's own 'max 1 open PR per repo' protocol line below - never enforced in code until pr.py's already_has_open_pr(), added the same day. Do not target ANY pylint-dev repo again."},
+    {"repo": "pylint-dev/astroid", "reason": "BLOCKED (2026-08-31) - same account block as pylint-dev/pylint above, same repo family. Do not target."}
   ],
   "protocol": [
     "before each PR: grep CONTRIBUTING + docs for AI/LLM policy; skip repo if automated PRs are unwelcome",

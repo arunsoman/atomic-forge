@@ -49,6 +49,9 @@ EXIT_REASONS = {
     # failure at all:
     "ai_policy_blocked",     # upstream has a written AI-contributions policy
     "issue_already_settled", # a maintainer already explained this isn't a bug
+    "pr_already_open",       # this account already has an open PR against
+                              # this repo — max 1 at a time (see pr.py
+                              # already_has_open_pr; the pylint-dev block)
 }
 
 

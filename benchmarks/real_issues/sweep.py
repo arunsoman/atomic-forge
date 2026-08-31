@@ -64,6 +64,10 @@ _FAIL = {"oracle_reject": "no (validated) regression test at HEAD",
          "issue_already_settled": "fix.py's own preflight caught a maintainer-rejected "
                                    "non-bug before any LLM spend — same as above, curation "
                                    "gap not a repair failure (see pr.py issue_already_settled)",
+         "pr_already_open": "fix.py's own preflight caught this account already having an "
+                             "open PR against the repo — enforces the campaign's own "
+                             "documented 'max 1 open PR per repo' rule (see pr.py "
+                             "already_has_open_pr; the pylint-dev block, 2026-08-31)",
          "error": "other error"}
 
 
@@ -128,6 +132,8 @@ def classify(stdout: str) -> str:
         return "ai_policy_blocked"
     if "a maintainer already settled this issue" in stdout:
         return "issue_already_settled"
+    if "already has an open PR against" in stdout:
+        return "pr_already_open"
     # Found live on python/mypy#21904 (round4 sweep, 2026-08-31): this used
     # to be `"bootstrap_fail" if "bootstrap" in stdout else "oracle_reject"`
     # — but "bootstrap" almost always appears SOMEWHERE in a healthy run's

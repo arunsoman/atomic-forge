@@ -161,6 +161,7 @@ def _stub_chain(monkeypatch, *, oracle_fails, repair_success, green=True):
     # touching anything outside the process.
     monkeypatch.setattr(F, "check_ai_policy", lambda upstream: None)
     monkeypatch.setattr(F, "issue_already_settled", lambda upstream, number: None)
+    monkeypatch.setattr(F, "already_has_open_pr", lambda upstream: None)
 
     class _Bridge:
         def __init__(self, *a, **k): pass
@@ -353,6 +354,27 @@ def test_run_fix_pr_body_includes_the_real_committed_test_file(monkeypatch, fake
     assert "def test_add_returns_five():" in captured["body"]
 
 
+def test_run_fix_aborts_when_this_account_already_has_an_open_pr(monkeypatch, fake_repo):
+    """Enforces campaign50_targets.json's own documented-but-never-enforced
+    "max 1 open PR per repo at a time" rule. Real consequence found live
+    (2026-08-31): 4 simultaneous astroid PRs from one batch violated it
+    and the account was blocked from the pylint-dev org for it. Checked
+    even under --dry-run, unlike the AI-policy warn-and-continue case —
+    piling a second open PR onto a repo is the actual harm this guards
+    against, not something a local preview needs to risk either."""
+    import atomic_forge.fix as F
+    raised = _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
+    monkeypatch.setattr(F, "already_has_open_pr",
+                        lambda upstream: "https://github.com/o/r/pull/1")
+    ib = fake_repo / "issue.txt"; ib.write_text("add(2,3) should be 5 but returns -1")
+    r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
+                  project_dir=fake_repo, issue_body_file=ib, dry_run=True)
+    assert r["success"] is False
+    assert r["stage"] == "preflight"
+    assert "already has an open PR" in r["reason"]
+    assert raised["called"] is False
+
+
 def test_run_fix_aborts_on_ai_contributions_policy(monkeypatch, fake_repo):
     """Preflight check added 2026-08-31 (see pr.py, RESULTS.md:
     Rapptz/discord.py#10507 was raised then closed citing exactly this) —
@@ -409,14 +431,17 @@ def test_run_fix_aborts_on_maintainer_already_settled(monkeypatch, fake_repo):
 
 
 def test_run_fix_force_skips_both_preflight_checks(monkeypatch, fake_repo):
-    """--force is the escape hatch for both checks at once — proceeds
-    through the full pipeline even when both would otherwise abort."""
+    """--force is the escape hatch for all three preflight checks at
+    once — proceeds through the full pipeline even when every one of
+    them would otherwise abort."""
     import atomic_forge.fix as F
     raised = _stub_chain(monkeypatch, oracle_fails=True, repair_success=True, green=True)
     monkeypatch.setattr(F, "check_ai_policy",
                         lambda upstream: {"path": "CONTRIBUTING.md", "reason": "..."})
     monkeypatch.setattr(F, "issue_already_settled",
                         lambda upstream, number: "https://example/settled")
+    monkeypatch.setattr(F, "already_has_open_pr",
+                        lambda upstream: "https://example/pull/1")
     ib = fake_repo / "issue.txt"; ib.write_text("add(2,3) should be 5 but returns -1")
     r = F.run_fix("https://github.com/o/r/issues/1", _DummyLLM(),
                   project_dir=fake_repo, issue_body_file=ib, dry_run=False, force=True)

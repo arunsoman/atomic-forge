@@ -7,9 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from atomic_forge.pr import (classify_pr_create_error, default_branch,
-                             default_branch_for, ensure_fork, forge_footer,
-                             prepare_pr_branch, raise_pr, summarize_repair_for_pr)
+from atomic_forge.pr import (already_has_open_pr, classify_pr_create_error,
+                             default_branch, default_branch_for, ensure_fork,
+                             forge_footer, prepare_pr_branch, raise_pr,
+                             summarize_repair_for_pr)
 
 
 def _git(args, cwd):
@@ -216,3 +217,42 @@ def test_ensure_fork_succeeds_when_fork_already_exists(tmp_repo, monkeypatch):
     remote = subprocess.run(["git", "remote", "get-url", "fork"], cwd=str(tmp_repo),
                             capture_output=True, text=True, check=True).stdout.strip()
     assert remote == fork_url
+
+def test_already_has_open_pr_finds_the_existing_one(monkeypatch):
+    """Enforces a rule that existed only on paper before this (see
+    already_has_open_pr's docstring): 4 simultaneous astroid PRs from a
+    single batch violated it and the account was blocked from the
+    pylint-dev org for it — this makes "max 1 open PR per repo" a real
+    precondition instead of something a human has to remember."""
+    import atomic_forge.pr as PR
+
+    def _fake_run(cmd, **kw):
+        class R:
+            returncode = 0
+            stdout = ""
+        r = R()
+        if cmd[:3] == ["gh", "api", "user"]:
+            r.stdout = "someuser\n"
+        elif "search/issues" in cmd[-1]:
+            r.stdout = ('{"items": [{"html_url": '
+                        '"https://github.com/o/r/pull/42"}]}')
+        return r
+    monkeypatch.setattr(PR.subprocess, "run", _fake_run)
+    assert already_has_open_pr("o/r") == "https://github.com/o/r/pull/42"
+
+
+def test_already_has_open_pr_none_when_clear(monkeypatch):
+    import atomic_forge.pr as PR
+
+    def _fake_run(cmd, **kw):
+        class R:
+            returncode = 0
+            stdout = ""
+        r = R()
+        if cmd[:3] == ["gh", "api", "user"]:
+            r.stdout = "someuser\n"
+        elif "search/issues" in cmd[-1]:
+            r.stdout = '{"items": []}'
+        return r
+    monkeypatch.setattr(PR.subprocess, "run", _fake_run)
+    assert already_has_open_pr("o/r") is None
