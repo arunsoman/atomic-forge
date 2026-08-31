@@ -72,17 +72,30 @@ gate → CIE-generated regression test → repair loop → fork + PR against
 the issue's own upstream repo. Every attempt (pass or fail) is logged to
 `real_issues/sweep/results_round2.jsonl`, resumable.
 
-Verified fixes landed and PR'd so far:
+**17 PRs raised so far, live-checked 2026-08-31: 10 open, 7 closed without merge, 0 merged.**
+Full methodology and the honest outcome-distribution breakdown (not just
+the raise count) is in [`real_issues/RESULTS.md`](real_issues/RESULTS.md)
+— this table is just the PR list, kept current.
 
 | Repo | Issue | PR | Fork | Status |
 |---|---|---|---|---|
 | [python-babel/babel](https://github.com/python-babel/babel) | [#1219](https://github.com/python-babel/babel/issues/1219) | [babel#1334](https://github.com/python-babel/babel/pull/1334) | `kannamma-labs` | open |
 | [jd/tenacity](https://github.com/jd/tenacity) | [#531](https://github.com/jd/tenacity/issues/531) | [tenacity#705](https://github.com/jd/tenacity/pull/705) | `kannamma-labs` | open |
 | [Delgan/loguru](https://github.com/Delgan/loguru) | [#1501](https://github.com/Delgan/loguru/issues/1501) | [loguru#1505](https://github.com/Delgan/loguru/pull/1505) | personal fork | closed by maintainer, unmerged — not resubmitted |
-| [pylint-dev/astroid](https://github.com/pylint-dev/astroid) | [#3199](https://github.com/pylint-dev/astroid/issues/3199) | [astroid#3261](https://github.com/pylint-dev/astroid/pull/3261) | personal fork | open |
-| [pylint-dev/astroid](https://github.com/pylint-dev/astroid) | [#3259](https://github.com/pylint-dev/astroid/issues/3259) | [astroid#3262](https://github.com/pylint-dev/astroid/pull/3262) | personal fork | open |
-| [pylint-dev/astroid](https://github.com/pylint-dev/astroid) | [#3258](https://github.com/pylint-dev/astroid/issues/3258) | [astroid#3263](https://github.com/pylint-dev/astroid/pull/3263) | personal fork | open |
-| [pylint-dev/astroid](https://github.com/pylint-dev/astroid) | [#3257](https://github.com/pylint-dev/astroid/issues/3257) | [astroid#3264](https://github.com/pylint-dev/astroid/pull/3264) | personal fork | open |
+| [pylint-dev/astroid](https://github.com/pylint-dev/astroid) | [#3199](https://github.com/pylint-dev/astroid/issues/3199) | [astroid#3261](https://github.com/pylint-dev/astroid/pull/3261) | personal fork | closed, unmerged (reviewer preferred a more comprehensive existing fix, #3203) |
+| [pylint-dev/astroid](https://github.com/pylint-dev/astroid) | [#3259](https://github.com/pylint-dev/astroid/issues/3259) | [astroid#3262](https://github.com/pylint-dev/astroid/pull/3262) | personal fork | closed, unmerged |
+| [pylint-dev/astroid](https://github.com/pylint-dev/astroid) | [#3258](https://github.com/pylint-dev/astroid/issues/3258) | [astroid#3263](https://github.com/pylint-dev/astroid/pull/3263) | personal fork | closed, unmerged |
+| [pylint-dev/astroid](https://github.com/pylint-dev/astroid) | [#3257](https://github.com/pylint-dev/astroid/issues/3257) | [astroid#3264](https://github.com/pylint-dev/astroid/pull/3264) | personal fork | closed, unmerged |
+| [psf/black](https://github.com/psf/black) | [#5214](https://github.com/psf/black/issues/5214) | [black#5370](https://github.com/psf/black/pull/5370) | `kannamma-labs` | open |
+| [psf/black](https://github.com/psf/black) | [#5260](https://github.com/psf/black/issues/5260) | [black#5371](https://github.com/psf/black/pull/5371) | `kannamma-labs` | open |
+| [psf/black](https://github.com/psf/black) | [#5328](https://github.com/psf/black/issues/5328) | [black#5372](https://github.com/psf/black/pull/5372) | `kannamma-labs` | open |
+| [python-trio/trio](https://github.com/python-trio/trio) | [#3279](https://github.com/python-trio/trio/issues/3279) | [trio#3498](https://github.com/python-trio/trio/pull/3498) | `kannamma-labs` | open |
+| [Rapptz/discord.py](https://github.com/Rapptz/discord.py) | [#10358](https://github.com/Rapptz/discord.py/issues/10358) | [discord.py#10507](https://github.com/Rapptz/discord.py/pull/10507) | `kannamma-labs` | closed — repo's written AI-contributions policy (a curation gap at the time; forge now checks for this before spending any attempt, see `pr.py`'s `check_ai_policy`) |
+| [pylint-dev/pylint](https://github.com/pylint-dev/pylint) | [#11357](https://github.com/pylint-dev/pylint/issues/11357) | [pylint#11371](https://github.com/pylint-dev/pylint/pull/11371) | `kannamma-labs` | closed, unmerged |
+| [dateutil/dateutil](https://github.com/dateutil/dateutil) | [#1432](https://github.com/dateutil/dateutil/issues/1432) | [dateutil#1554](https://github.com/dateutil/dateutil/pull/1554) | `kannamma-labs` | open |
+| [dateutil/dateutil](https://github.com/dateutil/dateutil) | [#1448](https://github.com/dateutil/dateutil/issues/1448) | [dateutil#1555](https://github.com/dateutil/dateutil/pull/1555) | `kannamma-labs` | open |
+| [dateutil/dateutil](https://github.com/dateutil/dateutil) | [#1442](https://github.com/dateutil/dateutil/issues/1442) | [dateutil#1556](https://github.com/dateutil/dateutil/pull/1556) | `kannamma-labs` | open |
+| [mahmoud/glom](https://github.com/mahmoud/glom) | [#315](https://github.com/mahmoud/glom/issues/315) | [glom#317](https://github.com/mahmoud/glom/pull/317) | `kannamma-labs` | open |
 
 (The babel/tenacity PRs were originally opened from a personal fork,
 then migrated to org-owned forks under `kannamma-labs` — same commits,
