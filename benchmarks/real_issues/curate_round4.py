@@ -19,9 +19,16 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import curate  # noqa: E402
 
-# (repo, license, per_repo_quota) — all untouched by round1-3
+# (repo, license, per_repo_quota) — all untouched by round1-3.
+# python/mypy excluded (2026-08-31, round4): #21907 and #21904 both died
+# at testgen (11 LLM calls / ~38k tokens each, no repair loop ever
+# reached) — mypy's actual test suite isn't ordinary pytest test
+# functions, it's a custom `[case ...]` DSL driven by
+# `pytest_plugins = ["mypy.test.data"]` in conftest.py (confirmed by
+# cloning and reading it directly), which testgen has no way to author
+# into. Same shape of lesson as round2's pydantic/rich exclusions —
+# see RESULTS.md.
 PLAN = [
-    ("python/mypy", "MIT", 8),
     ("mlflow/mlflow", "Apache-2.0", 8),
     ("sympy/sympy", "BSD-3-Clause", 8),
     ("pydata/xarray", "Apache-2.0", 8),

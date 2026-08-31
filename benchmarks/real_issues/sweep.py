@@ -85,9 +85,20 @@ def classify(stdout: str) -> str:
         return "pr_mechanics_fail"
     if "upstream blocks PR creation" in stdout:
         return "pr_locked"   # maintainer-side PR gate (policy), not our failure
-    if "abort at bootstrap gate" in stdout or "abort: no regression test" in stdout:
-        return "bootstrap_fail" if "bootstrap" in stdout else "oracle_reject"
-    if "no regression test generated; no PR raised" in stdout:
+    # Found live on python/mypy#21904 (round4 sweep, 2026-08-31): this used
+    # to be `"bootstrap_fail" if "bootstrap" in stdout else "oracle_reject"`
+    # — but "bootstrap" almost always appears SOMEWHERE in a healthy run's
+    # full captured stdout (the bootstrap gate's own "bootstrap gate:
+    # detect stack..." / "bootstrap gate passed: ..." prints run near the
+    # start of every attempt), so a testgen failure that happened well
+    # AFTER a passing bootstrap gate got mislabeled bootstrap_fail purely
+    # because that unrelated earlier line existed in the transcript.
+    # Match each abort message to its own specific, correct category
+    # instead of re-scanning the whole transcript for one ambiguous word.
+    if "abort at bootstrap gate" in stdout:
+        return "bootstrap_fail"
+    if ("abort: no regression test" in stdout
+            or "no regression test generated; no PR raised" in stdout):
         return "oracle_reject"
     return "repair_fail"
 
