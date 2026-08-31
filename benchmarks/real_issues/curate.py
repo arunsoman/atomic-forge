@@ -36,6 +36,37 @@ TARGET_REPOS = {
     "simple-salesforce/simple-salesforce": "Apache-2.0",
 }
 
+# A maintainer already settling the issue in-thread ("working as intended",
+# "wontfix", ...) is a stronger signal than any label or title heuristic —
+# found live on python-dateutil/dateutil#1421 (2026-08-31 round4 sweep):
+# curate_repo() picked it up as a clean bug candidate (repro'd, well-titled,
+# no BAD_LABEL), forge's repair loop burned 158 LLM calls / ~2.9M tokens
+# across 3 rounds trying to "fix" it, and its own postmortem noticed what
+# curation never looked for — the maintainer's first reply ("This is
+# working as intended... Any components missing from the string are taken
+# from the default date") had already settled it, and the reporter agreed.
+# No patch exists here because the reported behavior is correct by design;
+# see benchmarks/real_issues/RESULTS.md. curate_repo() only ever read the
+# issue's own body + a comment *count* — never actual comment content,
+# so this was invisible upstream of the repair loop entirely.
+MAINTAINER_REJECTION = re.compile(
+    r"(working as intended|works as intended|expected behaviou?r|by design|"
+    r"not a bug|won'?t\s*fix|wontfix|as designed|intentional|duplicate of|"
+    r"can'?t reproduce|cannot reproduce|unable to reproduce)", re.I)
+MAINTAINER_ASSOC = {"OWNER", "MEMBER", "COLLABORATOR"}
+
+
+def maintainer_rejected(repo: str, number: int) -> str | None:
+    """None if clear; else the rejecting comment's URL for the audit trail."""
+    data = gh(f"repos/{repo}/issues/{number}/comments")
+    for c in (data if isinstance(data, list) else []):
+        if c.get("author_association") not in MAINTAINER_ASSOC:
+            continue
+        if MAINTAINER_REJECTION.search(c.get("body") or ""):
+            return c.get("html_url", "")
+    return None
+
+
 REPRO_SIGNALS = re.compile(
     r"(Traceback|raise [A-Z]\w+Error|steps to repro|reproduce|Minimal example|"
     r"```|expected[:\s]|actual[:\s]|assert)", re.I)
@@ -98,6 +129,12 @@ def curate_repo(repo: str, lic: str, per_repo: int, min_year: int) -> list[dict]
         body = full.get("body") or ""
         if not REPRO_SIGNALS.search(body):
             continue
+        if item.get("comments", 0) > 0:
+            rejected_at = maintainer_rejected(repo, item["number"])
+            if rejected_at:
+                print(f"  skip {repo}#{item['number']}: maintainer already "
+                      f"settled it ({rejected_at})", file=sys.stderr)
+                continue
         rows.append({
             "repo": repo,
             "license": lic,
