@@ -50,12 +50,12 @@ against strong baselines. The bar in 2026:
 |---|---|
 | Real-issues harness (real merged bugs, live LLM, execution scoring) | live, 4/4 ([[Benchmarks]]) |
 | Regression-test generation from issue text, oracle-validated | live, 4/4 ([[Issue-to-PR]] testgen half) |
-| campaign50 real-issues campaign (18 repos, `fix --raise-pr`) | **in progress** — see `benchmarks/real_issues/campaign_log.md`. 4 PRs raised on pylint-dev/astroid (#3199, #3259, #3258, #3257 — fuzzer-found crashes), each independently re-verified against the repo's own suite after patching; PR merge status not yet tracked here. One fully-instrumented ledger run recorded so far (astroid#769: `repair_exhausted` after 5 rounds — a real failure case, kept for the failure-analysis writeup, not hidden) |
+| Real-issues campaign, consolidated (campaign50 + sweep round2/3) | **in progress** — see `benchmarks/real_issues/RESULTS.md`, the reconciled tally across all three streams. **103 tracked attempts across ~20 repos, 12 PRs raised, 0 merged** (10 open, 2 closed without merge). infra/bootstrap failure is the single largest failure bucket (~22%) — bigger lever right now than repair-loop tuning |
 | SWE-bench Verified harness | **planned** — next milestone |
-| 40–60-issue custom Real-Issues set (scaling from 4) | **in progress**, scaled beyond target to 18 repos via campaign50 — see row above |
+| 40–60-issue custom Real-Issues set (scaling from 4) | **exceeded on attempt count** (103+, see row above) — outcome distribution (not just raise count) is what should be reported: ~32% oracle_reject, ~32% repair_fail, ~22% infra_fail, ~12% pr_raised |
 | Baseline runs (aider / agent modes / pure generate-then-test) | **planned** |
 | Ablations (graph, blast-radius gate, K) | **planned** |
-| Cost-per-successful-fix reporting | **partially live** — the one fully-logged campaign50 run already carries full token/wall-clock accounting (`campaign50.ledger.jsonl`); needs the rest of the campaign logged the same way before it's reportable in aggregate |
+| Cost-per-successful-fix reporting | **partially live** — only one issue (astroid#769) has full token/wall-clock accounting; the sweep runner logs `seconds`/`model` per attempt but not full token counts yet — backfill needed before an aggregate $/fix number is credible |
 
 Nothing on the ✅ lines is claimed beyond what the harness actually ran.
 This page exists so the gap between "measured" and "designed" stays
