@@ -20,14 +20,17 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 CANDIDATES = HERE / "sweep" / "candidates.jsonl"
 RESULTS = HERE / "sweep" / "results.jsonl"
+FORGE_FIX_ROOT = Path(tempfile.gettempdir()) / "forge_fix"
 
 PY = sys.executable
 
@@ -56,6 +59,30 @@ _FAIL = {"oracle_reject": "no (validated) regression test at HEAD",
                                "see fix.py's forced post-verification commit, added "
                                "2026-08-31, which should make this rare going forward)",
          "error": "other error"}
+
+
+def _cleanup_workdir(repo: str, number: int) -> None:
+    """Remove `atomic-forge fix`'s per-attempt working directory
+    (/tmp/forge_fix/<repo>-<number>, fix.py's own naming convention) once
+    its result is logged. Found live (2026-08-31, mid-round4-rerun): this
+    was NEVER done, so /tmp/forge_fix silently grew to 6GB+ over one
+    sweep and exhausted the (7.7GB, tmpfs) /tmp mount — every subsequent
+    attempt then failed with a real but misleading OSError [Errno 28] No
+    space left on device (mlflow#25241, #25217) or a corrupted-looking
+    [Errno 13] Permission denied on an install that was really just
+    racing the same disk pressure (mlflow#25206). None of that was a
+    repair-quality or even a bootstrap failure - it was unmanaged disk
+    growth cascading into every candidate behind it.
+
+    Best-effort: a Docker-run bootstrap step can leave root-owned files
+    behind (confirmed live - a plain `rm -rf` as this user could not
+    fully clear one of the three directories above; freed most of it
+    anyway since rm -rf continues past individual permission errors).
+    `ignore_errors=True` matches that - reclaim what's reclaimable,
+    never let a leftover root-owned file crash the sweep."""
+    bare_repo = repo.split("/")[-1]
+    path = FORGE_FIX_ROOT / f"{bare_repo}-{number}"
+    shutil.rmtree(path, ignore_errors=True)
 
 
 def load_results(path: Path) -> set[str]:
@@ -191,6 +218,7 @@ def sweep(issues: list[dict], env: dict, budget_min: float,
             print(f"  {status} ({seconds}s): {tail[-1][:110] if tail else ''}",
                   file=sys.stderr)
         used_per_repo[repo] = used_per_repo.get(repo, 0) + 1
+        _cleanup_workdir(repo, cand["number"])
     print(f"sweep: {ok} PR(s) raised, {fail} not — {ok + fail} attempted",
           file=sys.stderr)
 
